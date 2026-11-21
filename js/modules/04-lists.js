@@ -2681,7 +2681,10 @@
          * those do not match the line as written, that line is marked whole, as before.
          */
         function inlineMarksForSelectedLines(preLines, focusIndices, type) {
-            if (type !== 'bold' && type !== 'italic' && type !== 'strike' && type !== 'code') return null;
+            if (type !== 'bold' && type !== 'italic' && type !== 'strike' && type !== 'code' && type !== 'link') return null;
+            // A link over several lines: the dialog's address on what is selected of each
+            // line, each line's own words as its text -- the bold rule, and no line joined.
+            if (type === 'link' && !(typeof _pendingLink !== 'undefined' && _pendingLink && _pendingLink.url)) return {};
             const keys = Object.keys(focusIndices).map(Number).filter(function (n) { return n >= 0 && n < preLines.length; })
                 .sort(function (a, b) { return a - b; });
             if (!keys.length) return {};
@@ -2717,7 +2720,9 @@
                 if (!ix.length) continue;
                 const whole = a === 0 && b === len;
                 let allOn = false;
-                if (type === 'code') {
+                if (type === 'link') {
+                    allOn = false;
+                } else if (type === 'code') {
                     if (whole) {
                         allOn = /^`[^`]+`$/.test(lineBody.trim());
                     } else if (typeof plainRangeToRawOffsets === 'function') {
@@ -2743,7 +2748,11 @@
             lines.forEach(function (l) {
                 if (!turnOff && l.allOn) return;
                 let next = null;
-                if (type === 'code') {
+                if (type === 'link') {
+                    const keepText = _pendingLink.text;
+                    _pendingLink.text = null;
+                    try { next = applyInlineFormatToRaw(l.raw, l.a, l.b, 'link'); } finally { _pendingLink.text = keepText; }
+                } else if (type === 'code') {
                     if (l.whole) next = transformRawForFormat(l.raw, type, { wholeLines: true });
                     else {
                         next = applyInlineFormatToRaw(l.raw, l.a, l.b, type);
@@ -3440,10 +3449,12 @@
         function formattingMayEdit() {
             if (window.tzPdfActive) return false;
             if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub') return false;
-            // (The Link dialog's Enter is not caught by this: the dialog takes the keyboard out
-            // of its field before it makes the link. format-menu-browser checks it.)
+            // The Link dialog's own Enter (applyLinkAdd sets _pendingLink) is let through: in
+            // Source its field still has the keyboard when the link is made, and refusing it
+            // made Add Link do nothing there (0.21.4-0.21.13; the Preview-only check missed it).
+            const fromLinkDialog = typeof _pendingLink !== 'undefined' && !!_pendingLink;
             const a = document.activeElement;
-            if (a && (a.tagName === 'INPUT' || (a.tagName === 'TEXTAREA'
+            if (!fromLinkDialog && a && (a.tagName === 'INPUT' || (a.tagName === 'TEXTAREA'
                 && !(typeof isSourceNode === 'function' && isSourceNode(a))))) return false;
             if (state.mode === 'source') return true;
             return !!(editor && editor.isContentEditable);

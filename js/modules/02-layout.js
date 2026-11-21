@@ -2252,13 +2252,20 @@
         // --- Link dialog ------------------------------------------------------------
         let _linkEditAnchor = null;
 
+        let _linkCaretSet = false;
         function closeLinkModal() {
             const m = document.getElementById('linkModal');
             if (!m) return;
             m.hidden = true;
             m.classList.remove('open');
             _linkEditAnchor = null;
-            try { if (editor) focusEditorNoScroll(); } catch (e) {}
+            if (_linkCaretSet) { _inlineSelCache = null; _linkCaretSet = false; }
+            // Back to the view in use: in Source this focused the hidden Preview editor, and
+            // what was typed after Add Link went nowhere.
+            try {
+                if (state.mode === 'source' && typeof sourceEditor !== 'undefined' && sourceEditor) sourceEditor.focus();
+                else if (editor) focusEditorNoScroll();
+            } catch (e) {}
         }
 
         /** anchor = the link being edited, or null to make a new one from the selection. */
@@ -2274,6 +2281,23 @@
             if (hIn) hIn.value = anchor ? (anchor.getAttribute('href') || '') : '';
             hideLinkPop();
             try { hideSelPop(); } catch (e) {}
+            // A new link on a bare caret in Preview: the dialog's fields take the keyboard and
+            // the caret with it, and the link went to the start of the line. Remember where it
+            // goes (cleared when the dialog finishes, _linkCaretSet).
+            _linkCaretSet = false;
+            if (!anchor && state.mode !== 'source') {
+                try {
+                    const s0 = window.getSelection();
+                    if (s0 && s0.rangeCount && s0.isCollapsed && editor && editor.contains(s0.anchorNode)) {
+                        const b0 = getAncestorBlock(s0.anchorNode);
+                        const o0 = b0 ? getPlainOffsetsInBlock(b0) : null;
+                        if (b0 && o0 && o0.start != null) {
+                            _inlineSelCache = { block: b0, start: o0.start, end: o0.start, text: '' };
+                            _linkCaretSet = true;
+                        }
+                    }
+                } catch (eLc) {}
+            }
             m.hidden = false;
             m.classList.add('open');
             // The half most likely to need typing gets the caret: a new link already has
@@ -2293,11 +2317,14 @@
                 const u = (document.getElementById('linkModalHref') || {}).value || '';
                 if (!u.trim()) { closeLinkModal(); return; }
                 const anchor = _linkEditAnchor;
+                const keepCaret = _linkCaretSet;
+                _linkCaretSet = false;            // so closing does not drop it before the link is made
                 closeLinkModal();
                 try {
                     if (anchor) applyLinkEdit(anchor, t.trim() || u.trim(), u.trim());
                     else applyLinkAdd(t.trim() || u.trim(), u.trim());
                 } catch (e) {}
+                if (keepCaret) _inlineSelCache = null;
             };
             if (ok) ok.addEventListener('click', commit);
             if (close) close.addEventListener('click', closeLinkModal);

@@ -3082,13 +3082,19 @@
             if (state.mode === 'source') {
                 const start = sourceEditor.selectionStart || 0;
                 const end = sourceEditor.selectionEnd || 0;
-                // Ensure blank lines around table when inserting mid-document
-                let text = tableMd;
+                // As in Preview: the table goes after the caret's line, or takes its place if
+                // the line is empty, and replaces no text. Inserting at the caret split the
+                // line and glued its rest onto the table's last row ("| Cell 2,2 |two three"),
+                // and with a selection the selected words were deleted.
                 const val = sourceEditor.value || '';
-                if (start > 0 && val.charAt(start - 1) !== '\n') text = '\n' + text;
+                let ls = end; while (ls > 0 && val.charAt(ls - 1) !== '\n') ls--;
+                let le = end; while (le < val.length && val.charAt(le) !== '\n') le++;
+                const lineEmpty = !val.slice(ls, le).trim();
+                const at = lineEmpty ? ls : le;
+                const text = lineEmpty ? tableMd : '\n' + tableMd;
                 const h1Rel = text.indexOf('Header 1');
-                const caretPos = start + (h1Rel >= 0 ? h1Rel : 0);
-                sourceEditor.setRangeText(text, start, end, 'end');
+                const caretPos = at + (h1Rel >= 0 ? h1Rel : 0);
+                sourceEditor.setRangeText(text, at, le, 'end');
                 sourceEditor.setSelectionRange(caretPos, caretPos);
                 sourceEditor.focus();
                 resizeSourceEditor();

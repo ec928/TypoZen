@@ -810,7 +810,8 @@
                 // Multi-line: format each hard line (never wrap the whole span in one **…**).
                 // Cross-line **…** splits across blocks and produces marker soup like r**ow 2001*.
                 if (full.slice(start, end).indexOf('\n') >= 0
-                    && (type === 'bold' || type === 'italic' || type === 'strike' || type === 'code')) {
+                    && (type === 'bold' || type === 'italic' || type === 'strike' || type === 'code'
+                        || (type === 'link' && _pendingLink && _pendingLink.url))) {
                     let s = start;
                     let e = end;
                     while (s > 0 && full.charAt(s - 1) !== '\n') s--;
@@ -875,7 +876,12 @@
                         const bo = bodyOf(outLines[lastK]);
                         const p2r = plainRangeToRawOffsets(bo.body, 0, 0).plainToRaw || [];
                         const pEndPlain = lp ? lp.p : p2r.length;
-                        const inBody = pEndPlain > 0 && p2r.length >= pEndPlain ? p2r[pEndPlain - 1] + 1 : 0;
+                        let inBody = pEndPlain > 0 && p2r.length >= pEndPlain ? p2r[pEndPlain - 1] + 1 : 0;
+                        // After a link, past its address: typing goes on outside it, as in Preview.
+                        if (type === 'link') {
+                            const close = bo.body.indexOf(')', inBody);
+                            if (close >= 0) inBody = close + 1;
+                        }
                         caret = s + off + bo.pre.length + inBody;
                     } catch (eCaret) {}
                     HistoryManager.beginEdit();
@@ -904,10 +910,13 @@
                     const linkRep = '[' + inner + '](' + lu + ')';
                     HistoryManager.beginEdit();
                     sourceSetRangeTextPreserveScroll(linkRep, start, end, 'select');
+                    // The link's text stays selected, not its brackets and address, as in Preview.
+                    try { sourceEditor.setSelectionRange(start + 1, start + 1 + inner.length); } catch (eLs) {}
+                    _sourceFormatSel = { start: start + 1, end: start + 1 + inner.length };
                     resizeSourceEditor();
                     updateStats();
                     HistoryManager.commitEdit();
-                    stampSrcInlineCaret(start + linkRep.length, end, false);
+                    stampSrcInlineCaret(start + 1 + inner.length, end, false);
                     return true;
                 }
                 let inner = full.slice(start, end);
