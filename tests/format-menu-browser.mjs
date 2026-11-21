@@ -152,6 +152,45 @@ try {
     same('not for AltGr (Ctrl+Alt)', JSON.stringify(await cues()), JSON.stringify([]));
     await page.keyboard.up('Alt'); await page.keyboard.up('Control');
 
+    console.log('\n=== a read-only view or a text field takes no formatting ===');
+    const chord = async (key) => { await page.keyboard.down('Control'); await page.keyboard.press(key); await page.keyboard.up('Control'); await settled(page); };
+    await load('Plain line here\n## Head');
+    b = await lineBox(0);
+    await page.mouse.click(b.x + 10, b.y + b.height / 2);
+    await page.evaluate(() => handleCommand('view_set:mode:reader'));
+    await settled(page);
+    same('premise: Reader made the document read-only', await page.evaluate(() => document.getElementById('editor').isContentEditable), false);
+    await chord('Digit2'); await chord('KeyB');
+    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('callout:note'); });
+    await settled(page);
+    same('Ctrl+2, Ctrl+B and Callout change nothing in Reader', await saved(), 'Plain line here\n## Head');
+    await page.evaluate(() => handleCommand('view_set:mode:wysiwyg'));
+    await settled(page);
+    b = await lineBox(0);
+    await page.mouse.click(b.x + 10, b.y + b.height / 2);
+    await chord('Digit3');
+    same('control: back in Preview, Ctrl+3 makes a heading', await saved(), '### Plain line here\n## Head');
+    await page.evaluate(() => handleCommand('toggle_search_sidebar'));
+    await settled(page);
+    await page.evaluate(() => { const i = document.getElementById('sidebarSearchInput'); i.focus(); });
+    same('premise: the sidebar search box has the keyboard', await page.evaluate(() => document.activeElement && document.activeElement.id), 'sidebarSearchInput');
+    await chord('KeyB'); await chord('Digit1');
+    same('Ctrl+B and Ctrl+1 typed in the search box leave the document alone', await saved(), '### Plain line here\n## Head');
+    // The Link dialog's Enter is a text field's key too, and must still make the link.
+    await load('word here');
+    b = await lineBox(0);
+    await page.mouse.move(b.x + 2, b.y + b.height / 2); await page.mouse.down();
+    await page.mouse.move(b.x + 30, b.y + b.height / 2, { steps: 3 }); await page.mouse.up();
+    await page.evaluate(() => hideSelPop());
+    await chord('KeyK');
+    await page.waitForSelector('#linkModal:not([hidden])', { timeout: 3000 });
+    await page.focus('#linkModalHref');
+    await page.keyboard.type('https://x.com');
+    await page.keyboard.press('Enter');
+    await settled(page);
+    const linked = await saved();
+    same('the Link dialog: Enter in the address makes the link', /^\[wo[^\]]*\]\(https:\/\/x\.com\)/.test(linked), true);
+
     console.log('\n=== the selection popup: reading tools only ===');
     await load('Some words here');
     b = await lineBox(0);

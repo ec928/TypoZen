@@ -3335,7 +3335,28 @@
             return !(typeof isCodeDocument === 'function' && isCodeDocument());
         }
 
+        /**
+         * Whether a formatting command may change the document now: it can take an edit
+         * (not Reader, a book or a PDF -- Reader's contenteditable="false" is the signal),
+         * and the keyboard is not in a text field such as the sidebar's search.
+         */
+        function formattingMayEdit() {
+            if (window.tzPdfActive) return false;
+            if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub') return false;
+            // (The Link dialog's Enter is not caught by this: the dialog takes the keyboard out
+            // of its field before it makes the link. format-menu-browser checks it.)
+            const a = document.activeElement;
+            if (a && (a.tagName === 'INPUT' || (a.tagName === 'TEXTAREA'
+                && !(typeof isSourceNode === 'function' && isSourceNode(a))))) return false;
+            if (state.mode === 'source') return true;
+            return !!(editor && editor.isContentEditable);
+        }
+
         function applyFormatting(type) {
+            // A read-only view takes no formatting. The menus are greyed there, but the
+            // shortcuts went straight through: Ctrl+B (since long before 0.21) and Ctrl+2
+            // changed a Markdown document in Reader, and a book's text (2026-11-21).
+            if (!formattingMayEdit()) return;
             // Markdown formatting has no meaning in a code file: H2 on a C# line wrote "## "
             // into the code. The controls are greyed there too; this covers the shortcuts.
             if (!takesMarkdownFormatting()) return;
