@@ -233,10 +233,38 @@ try {
     });
     await page.evaluate(() => { freezeFormatSelection(); applyFormatting('h2'); });
     await settled(page);
-    same('partial-selection heading split leaves a collapsed caret', await isCaretCollapsed(), true);
+    same('partial selection + heading leaves a collapsed caret', await isCaretCollapsed(), true);
     await page.keyboard.type('!');
     await settled(page);
-    same('typing after partial heading split appends to the heading', await saved(), 'Before \n## part!\n after');
+    same('partial selection + heading formats the entire block and appends at the end', await saved(), '## Before part after!');
+
+    await load('Before part after');
+    await page.evaluate(() => {
+        const el = document.querySelector('#editor .block[data-model-index="0"]');
+        const t = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode();
+        const r = document.createRange(); r.setStart(t, 7); r.setEnd(t, 11);
+        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    });
+    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('quote'); });
+    await settled(page);
+    same('partial selection + quote leaves a collapsed caret', await isCaretCollapsed(), true);
+    await page.keyboard.type('!');
+    await settled(page);
+    same('partial selection + quote formats the entire block and appends at the end', await saved(), '> Before part after!');
+
+    await load('## Before part after');
+    await page.evaluate(() => {
+        const el = document.querySelector('#editor .block[data-model-index="0"]');
+        const t = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode();
+        const r = document.createRange(); r.setStart(t, 7); r.setEnd(t, 11);
+        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    });
+    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('quote'); });
+    await settled(page);
+    same('partial selection in heading + quote leaves a collapsed caret', await isCaretCollapsed(), true);
+    await page.keyboard.type('!');
+    await settled(page);
+    same('partial selection in heading + quote converts the entire block and appends at the end', await saved(), '> Before part after!');
 
     await load('Source heading\nSecond', 'md', 'source');
     await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(0, 0); });

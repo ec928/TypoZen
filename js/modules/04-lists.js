@@ -2795,6 +2795,7 @@
                     if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
                     _formatSelectionFrozen = false;
                     _selectedFormatRaws = {};
+                    _inlineSelCache = null;
                     snapshotFormatSelectionFromEditor();
                 } catch (eEnd) {}
             }
@@ -3590,32 +3591,8 @@
 
             HistoryManager.beginEdit();
 
-            // Selection-aware path: heading/quote on part of one block → split, format only that part
-            if ((isHeading || type === 'quote') && targets.length === 1) {
-                const splitBlocks = trySplitAndFormatBlock(targets[0], type, fmtOpts);
-                if (splitBlocks && splitBlocks.length) {
-                    targets = splitBlocks;
-                    _selectedFormatBlocks = targets.slice();
-                    const focusEl = (currentActiveBlock && targets.indexOf(currentActiveBlock) >= 0)
-                        ? currentActiveBlock : targets[targets.length - 1];
-                    currentActiveBlock = focusEl;
-                    try {
-                        focusEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-                        // Leave a collapsed caret at the end of the formatted block, not a selection.
-                        focusBlock(focusEl, (focusEl.textContent || '').length);
-                        if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
-                        _formatSelectionFrozen = false;
-                        _selectedFormatRaws = {};
-                        snapshotFormatSelectionFromEditor();
-                    } catch (e) {
-                        try { focusBlock(focusEl, null); } catch (e2) {}
-                    }
-                    updateStats();
-                    updateOutline();
-                    HistoryManager.commitEdit();
-                    return;
-                }
-            }
+            // Paragraph formats (Heading, Quote, Normal Text, Callout, Lists) always act on whole
+            // block(s) rather than splitting mid-paragraph on a partial selection (Ed, 2026-11-21).
 
             let olNum = 1;
             for (let i = 0; i < targets.length; i++) {
@@ -3661,6 +3638,7 @@
                 if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
                 _formatSelectionFrozen = false;
                 _selectedFormatRaws = {};
+                _inlineSelCache = null;
                 snapshotFormatSelectionFromEditor();
             } catch (e) {
                 try { focusBlock(currentActiveBlock, null); } catch (e2) {}
@@ -3868,6 +3846,7 @@
                 }
                 _formatSelectionFrozen = false;
                 _selectedFormatRaws = {};
+                _inlineSelCache = null;
                 snapshotFormatSelectionFromEditor();
             } catch (eF) {}
             return true;

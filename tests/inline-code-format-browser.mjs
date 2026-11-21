@@ -180,12 +180,12 @@ try {
     await sleep(80);
     same('8c Add Link over code span produces clean link', await md(), 'use [code](https://x.com) here');
 
-    // 9. Partial-block H2 split on leading bold
+    // 9. Partial selection inside a paragraph formats the whole block as H2 (never splits mid-line)
     await load('**Privacy-first** and completely free.');
     await selectBlockPlain(0, 0, 'Privacy-first and'.length);
     await page.evaluate(() => window.__host('fmt:h2'));
     await sleep(80);
-    same('9 partial H2 from bold start leaves no stray ** block', await md(), '## **Privacy-first** and\n completely free.');
+    same('9 partial selection + H2 formats the whole block and keeps inline bold intact', await md(), '## **Privacy-first** and completely free.');
 
     // 10. Multi-block partial code across two lines
     await load('Intro **bold** rest\nsecond line tail');

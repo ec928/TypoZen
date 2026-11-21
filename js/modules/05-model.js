@@ -1463,6 +1463,7 @@
                 try {
                     _formatSelectionFrozen = false;
                     _selectedFormatRaws = {};
+                    _inlineSelCache = null;
                     if (!restoringAtStart) {
                         _selectedFormatIndices = [];
                         _selectedFormatBlocks = [];
