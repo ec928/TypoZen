@@ -4581,6 +4581,15 @@
             } catch (e) { return false; }
         }
 
+        /** The marker a new line in this quote starts with ("> ", "> > "), or '' when the
+         *  line is not a quote. A callout's header gives "> ": its body is a quote. */
+        function quoteContinuation(raw) {
+            const m = String(raw == null ? '' : raw).match(/^((?:>[ \t]?)+)/);
+            if (!m) return '';
+            const p = m[1].replace(/[ \t]+$/, '');
+            return p.split('>').slice(1).map(function () { return '>'; }).join(' ') + ' ';
+        }
+
         function handleEnterAtBlock(block, shiftKey, opts) {
             if (!block) return;
             const skipHistory = !!(opts && opts.skipHistory);
@@ -4662,6 +4671,28 @@
                     updateStats();
                     return;
                 }
+                // The same for a quote or callout line with nothing on it (">" or "> "):
+                // Enter leaves the quote, as it leaves a list (Ed, 2026-11-21).
+                if (/^(?:>[ \t]?)+$/.test(whole0)) {
+                    if (!skipHistory) HistoryManager.beginEdit();
+                    writeBlockRaw(block, '');
+                    const afterQ = createBlock('', block);
+                    window.isProgrammaticFocus = true;
+                    focusBlock(afterQ);
+                    try {
+                        const rq = document.createRange();
+                        rq.selectNodeContents(afterQ);
+                        rq.collapse(true);
+                        const sq = window.getSelection();
+                        sq.removeAllRanges();
+                        sq.addRange(rq);
+                    } catch (eCq) {}
+                    ensureCaretVisible(afterQ);
+                    try { refreshLastGoodDocRaws(); } catch (eRq) {}
+                    if (!skipHistory) HistoryManager.commitEdit();
+                    updateStats();
+                    return;
+                }
             }
 
             // At the start of a line the whole line moves down, marker and all. It used to
@@ -4703,6 +4734,18 @@
             if (wholeLine !== null) {
                 const wl = parseListLine(wholeLine);
                 raw = wl ? formatListLine(Object.assign({}, wl, { body: '', checked: false })) : '';
+                // Inside a quote -- the line above is part of it, as in a callout's body --
+                // the line left behind is an empty quote line, so the box is not cut in two.
+                // Where the quote starts on this line, a plain blank line goes above it, as
+                // before: that is a new paragraph before the quote.
+                if (!wl && quoteContinuation(wholeLine)) {
+                    let above = '';
+                    try {
+                        const mi = DocumentModel.modelIndexOfEl(block);
+                        if (mi > 0 && DocumentModel.blocks[mi - 1]) above = String(DocumentModel.blocks[mi - 1].raw || '');
+                    } catch (eAb) {}
+                    if (/^>/.test(above)) raw = quoteContinuation(wholeLine);
+                }
                 // The line it pushes down is the next number.
                 if (wl && wl.kind === 'ol') wholeLine = wholeLine.replace(/^([ \t]*)\d+/, '$1' + (wl.num + 1));
             } else if (raw == null || raw === '') {
@@ -4747,11 +4790,19 @@
                             body: ''
                         });
                     }
+                } else if (quoteContinuation(raw)) {
+                    // Enter at the end of a quote or callout line (its header included)
+                    // goes on in the quote, as Enter goes on in a list (Ed, 2026-11-21).
+                    nextRaw = quoteContinuation(raw);
                 } else {
                     nextRaw = '';
                 }
             } else {
                 nextRaw = coerceBlockRaw(afterText);
+                // Split inside a quote line: the second half stays in the quote.
+                if (!shiftKey && wholeLine === null && quoteContinuation(raw) && !/^>/.test(nextRaw)) {
+                    nextRaw = quoteContinuation(raw) + String(nextRaw).replace(/^[ \t]+/, '');
+                }
                 // Split inside a list item: the second half is the next item, with the same
                 // marker and indent ("- one|two" -> "- one" / "- two"). It used to come out
                 // as a plain paragraph. Shift+Enter still gives a line without a marker.

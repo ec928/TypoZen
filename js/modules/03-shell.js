@@ -442,6 +442,29 @@
                         : m[2];
                     insert = '\n' + m[1] + marker + m[3];
                 }
+                // A quote or callout line goes on in the quote, and an empty one (">" or
+                // "> ") ends it, as a list does (Ed, 2026-11-21). Not inside a code fence,
+                // where ">" is a prompt or an operator: only then is the text above scanned.
+                const q = !m ? /^([ \t]*)((?:>[ \t]?)+)(.*)$/.exec(line) : null;
+                if (q) {
+                    let inFence = false;
+                    full.substring(0, ls).split('\n').forEach(function (l) { if (/^\s*(```|~~~)/.test(l)) inFence = !inFence; });
+                    let le = start;
+                    while (le < full.length && full.charAt(le) !== '\n') le++;
+                    if (!inFence) {
+                        // Empty means the whole line, not only the part left of the caret.
+                        if (!q[3].trim() && !full.substring(start, le).trim()) {
+                            e.preventDefault();
+                            HistoryManager.beginEdit();
+                            sourceEditor.setRangeText('\n', ls, start, 'end');
+                            resizeSourceEditor();
+                            updateStats();
+                            HistoryManager.commitEdit();
+                            return;
+                        }
+                        insert = '\n' + q[1] + quoteContinuation(q[2]);
+                    }
+                }
                 if (insert === '\n') return;                  // nothing to carry: leave Enter alone
 
                 e.preventDefault();
