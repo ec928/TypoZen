@@ -5164,16 +5164,7 @@
                 const was = String(block.getAttribute('data-raw') || '').match(/\[!(\w+)\]/);
                 const kind = was && was[1].toLowerCase() === type ? was[1] : type.toUpperCase();
                 const titleEl = alertEl.querySelector('.tz-alert-title');
-                let title = titleEl ? keepTypedSpaces(childInlineMd(titleEl)).trim() : '';
-                // With no title written, the header shows the type's name ("Caution",
-                // marked data-tz-name by the renderer), and typing after it is typing a
-                // title. Saving the name with it wrote "> [!CAUTION] CautionX" into the file:
-                // the name is the app's, not the text's. The mark stays on the element while
-                // it is typed in, so every save of it reads the same.
-                const shownName = titleEl ? titleEl.getAttribute('data-tz-name') : null;
-                if (shownName && title.indexOf(shownName) === 0) title = title.slice(shownName.length).trim();
-                else if (shownName && title.length > shownName.length
-                    && title.slice(-shownName.length) === shownName) title = title.slice(0, -shownName.length).trim();
+                const title = titleEl ? keepTypedSpaces(childInlineMd(titleEl)).trim() : '';
                 const custom = title && title.toLowerCase() !== type ? ' ' + title : '';
                 return coerceBlockRaw('> [!' + kind + ']' + custom);
             }
