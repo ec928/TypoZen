@@ -799,6 +799,64 @@ try {
     const srcCut = await page.evaluate(() => tzMenuCopyOrCut(true));
     await settleQuick();
     same('Source Cut removes "Beta"', srcCut.text === 'Beta' && (await saved()) === 'Alpha line\n line', true);
+
+    console.log('\n=== paste over selection keeps trailing space and replaces the word; collapsed/Reader/Find Copy ===');
+    await loadQuick('Three ways to see single word here', 'md', 'wysiwyg');
+    await selectPart(0, 18, 24);
+    await page.evaluate(() => pasteLikeCtrlV('', 'REPLACED', false));
+    await settleQuick();
+    same('Plain paste over selected word keeps trailing space', await saved(), 'Three ways to see REPLACED word here');
+
+    await loadQuick('Three ways to see single word here', 'md', 'wysiwyg');
+    await selectPart(0, 18, 24);
+    await page.evaluate(() => pasteLikeCtrlV('<b>boldword</b>', 'boldword', false));
+    await settleQuick();
+    same('Rich HTML paste over selected word replaces it cleanly', await saved(), 'Three ways to see **boldword** word here');
+
+    await loadQuick('Three ways to see single word here', 'md', 'wysiwyg');
+    await selectPart(0, 18, 24);
+    await page.evaluate(() => pasteLikeCtrlV('', '**boldword**', true));
+    await settleQuick();
+    same('Markdown paste-as-plain over selected word replaces it cleanly', await saved(), 'Three ways to see **boldword** word here');
+
+    await loadQuick('Three ways to see single word here', 'md', 'wysiwyg');
+    await selectPart(0, 18, 24);
+    await page.evaluate(() => {
+        rememberEditorCaret();
+        const b = document.querySelector('#editor .block[data-model-index="0"]');
+        const t = document.createTreeWalker(b, NodeFilter.SHOW_TEXT).nextNode();
+        const r = document.createRange(); r.setStart(t, 18); r.collapse(true);
+        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+        document.getElementById('editor').blur();
+    });
+    const colBlurCopy = await page.evaluate(() => tzMenuCopyOrCut(false));
+    same('Preview collapsed-on-blur Copy recovers "single"', colBlurCopy.text, 'single');
+
+    await loadQuick('Three ways to see single word here', 'md', 'reader');
+    await page.evaluate(() => {
+        const b = document.querySelector('#editor .block[data-model-index="0"]');
+        const t = document.createTreeWalker(b, NodeFilter.SHOW_TEXT).nextNode();
+        const r = document.createRange(); r.setStart(t, 18); r.setEnd(t, 24);
+        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+        rememberEditorCaret();
+        s.removeAllRanges();
+    });
+    const rdrCopy = await page.evaluate(() => tzMenuCopyOrCut(false));
+    same('Reader blurred Copy recovers "single"', rdrCopy.text, 'single');
+
+    await loadQuick('Alpha beta', 'md', 'wysiwyg');
+    await page.evaluate(() => {
+        openFindBar();
+        const i = document.getElementById('findInput');
+        i.focus(); i.value = 'needle'; i.setSelectionRange(0, 6);
+        i.blur();
+    });
+    const findCopy = await page.evaluate(() => tzMenuCopyOrCut(false));
+    same('Find bar blurred Copy recovers "needle"', findCopy.text, 'needle');
+    const findCut = await page.evaluate(() => tzMenuCopyOrCut(true));
+    const findValAfter = await page.evaluate(() => document.getElementById('findInput').value);
+    same('Find bar blurred Cut removes "needle"', findCut.text === 'needle' && findValAfter === '', true);
+    await page.evaluate(() => { if (typeof closeFindBar === 'function') closeFindBar(); });
 } finally {
     await browser.close();
     clearTimeout(deadline);

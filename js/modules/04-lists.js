@@ -847,11 +847,12 @@
         }
 
         /**
-         * Line `raw` with Markdown `pasted` inserted at visible offset `off`, each part keeping
-         * its own marks. Returns { raw, addedLength } or null (a table or fence line, or a
-         * result that does not read as the line with the paste in it).
+         * Line `raw` with Markdown `pasted` inserted at visible offset `off` (or replacing
+         * `[off, endOff)` when `endOff > off`), each part keeping its own marks.
+         * Returns { raw, addedLength } or null (a table or fence line, or a result that
+         * does not read as the line with the paste in it).
          */
-        function insertMarkdownIntoLine(raw, off, pasted) {
+        function insertMarkdownIntoLine(raw, off, pasted, endOff) {
             raw = String(raw == null ? '' : raw);
             pasted = String(pasted == null ? '' : pasted);
             if (raw.indexOf('\n') >= 0 || pasted.indexOf('\n') >= 0) return null;
@@ -873,9 +874,19 @@
             const el = make(raw);
             const vis = el.textContent || '';
             off = Math.max(0, Math.min(off | 0, vis.length));
+            endOff = endOff != null ? Math.max(off, Math.min(endOff | 0, vis.length)) : off;
             const p = make(pasted);
             const pastedVis = p.textContent || '';
             if (!pastedVis) return null;
+            if (endOff > off) {
+                const pcA = pointForOffset(el, off);
+                const pcB = pointForOffset(el, endOff);
+                if (!pcA || !pcB) return null;
+                const delRange = document.createRange();
+                delRange.setStart(pcA.node, pcA.offset);
+                delRange.setEnd(pcB.node, pcB.offset);
+                delRange.deleteContents();
+            }
             const pc = pointForOffset(el, off);
             if (!pc) return null;
             const tailRange = document.createRange();
@@ -901,7 +912,7 @@
             try { md = blockHtmlToMarkdown(el); } catch (eMd) { return null; }
             if (md == null) return null;
             const check = make(String(md));
-            if ((check.textContent || '') !== vis.slice(0, off) + pastedVis + vis.slice(off)) return null;
+            if ((check.textContent || '') !== vis.slice(0, off) + pastedVis + vis.slice(endOff)) return null;
             return { raw: String(md), addedLength: pastedVis.length };
         }
 

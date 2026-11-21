@@ -2408,6 +2408,30 @@
         function markCaretDisplaced() {}
         function clearCaretDisplaced() {}
 
+        if (typeof window !== 'undefined' && window.__tzLastUiInput == null) window.__tzLastUiInput = null;
+        if (typeof document !== 'undefined' && !window.__tzUiInputTrackers) {
+            window.__tzUiInputTrackers = true;
+            const trackUiInput = function (e) {
+                try {
+                    const t = e && e.target;
+                    if (!t) return;
+                    if ((t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')
+                        && t !== sourceEditor && (!editor || !editor.contains(t))) {
+                        window.__tzLastUiInput = t;
+                    } else if (e.type === 'mousedown' || e.type === 'pointerdown'
+                        || (editor && (t === editor || editor.contains(t))) || t === sourceEditor) {
+                        window.__tzLastUiInput = null;
+                    }
+                } catch (eU) {}
+            };
+            document.addEventListener('focusin', trackUiInput, true);
+            document.addEventListener('mousedown', trackUiInput, true);
+            document.addEventListener('pointerdown', trackUiInput, true);
+            document.addEventListener('mouseup', trackUiInput, true);
+            document.addEventListener('keyup', trackUiInput, true);
+            document.addEventListener('select', trackUiInput, true);
+        }
+
         function rememberEditorCaret() {
             try {
                 if (state.mode === 'source' && typeof isSourceFocused === 'function' && isSourceFocused()
@@ -2434,6 +2458,20 @@
                 if (off && off.start != null) {
                     start = off.start | 0;
                     end = off.end != null ? (off.end | 0) : start;
+                } else if (!sel.isCollapsed && sel.rangeCount) {
+                    const r = sel.getRangeAt(0);
+                    if (block.contains(r.startContainer) && block.contains(r.endContainer)) {
+                        const rS = document.createRange();
+                        rS.selectNodeContents(block);
+                        rS.setEnd(r.startContainer, r.startOffset);
+                        const rE = document.createRange();
+                        rE.selectNodeContents(block);
+                        rE.setEnd(r.endContainer, r.endOffset);
+                        start = rS.toString().length;
+                        end = rE.toString().length;
+                    } else {
+                        return;
+                    }
                 } else if (sel.isCollapsed) {
                     const pre = document.createRange();
                     pre.selectNodeContents(block);
@@ -2446,6 +2484,7 @@
                 // and a menu taking the keyboard draws it as Preview again).
                 _editorCaretMemory = { kind: 'preview', index: index, start: start, end: end,
                     text: block.textContent || '', at: Date.now() };
+                if (typeof window !== 'undefined') window.__tzLastUiInput = null;
             } catch (e) {}
         }
         window.rememberEditorCaret = rememberEditorCaret;
@@ -2492,19 +2531,22 @@
                 try { block = ensureModelBlockVisible(mem.index, { topPad: 48 }); } catch (eVis) {}
             }
             if (!block || !editor.contains(block)) return false;
-            focusEditorNoScroll();
+            const isEditable = editor.isContentEditable;
+            if (isEditable) focusEditorNoScroll();
             if (typeof setCaretAtOffset !== 'function') return true;
-            // Make the line the active one before placing the caret in it: with Reveal on,
-            // that redraws it as Markdown, which resets a caret placed first (it went to
-            // the start of the line after a menu). The offsets were taken in that text.
-            // A line marked active without being made so (a reload or an undo sets it
-            // directly): not lit, or with Reveal on still drawn as Preview. Make it active.
-            if (currentActiveBlock === block && (!block.classList.contains('focused')
-                || (state.revealOnFocus && typeof blockShowsRevealedMarkdown === 'function'
-                    && !blockShowsRevealedMarkdown(block)
-                    && !(typeof blockWasEdited === 'function' && blockWasEdited(block))))) currentActiveBlock = null;
-            if (currentActiveBlock !== block) {
-                try { setCaretAtOffset(block, 0); updateActiveBlock(); } catch (eAct) {}
+            if (isEditable) {
+                // Make the line the active one before placing the caret in it: with Reveal on,
+                // that redraws it as Markdown, which resets a caret placed first (it went to
+                // the start of the line after a menu). The offsets were taken in that text.
+                // A line marked active without being made so (a reload or an undo sets it
+                // directly): not lit, or with Reveal on still drawn as Preview. Make it active.
+                if (currentActiveBlock === block && (!block.classList.contains('focused')
+                    || (state.revealOnFocus && typeof blockShowsRevealedMarkdown === 'function'
+                        && !blockShowsRevealedMarkdown(block)
+                        && !(typeof blockWasEdited === 'function' && blockWasEdited(block))))) currentActiveBlock = null;
+                if (currentActiveBlock !== block) {
+                    try { setCaretAtOffset(block, 0); updateActiveBlock(); } catch (eAct) {}
+                }
             }
             let start = mem.start | 0;
             let end = mem.end != null ? (mem.end | 0) : start;
@@ -2517,19 +2559,46 @@
                     end = formatCaretMapOffset(mem.text, now, end);
                 }
             }
-            setCaretAtOffset(block, start);
-            if (end > start) {
-                const sel = window.getSelection();
-                const aNode = sel.anchorNode, aOff = sel.anchorOffset;
-                setCaretAtOffset(block, end);
-                try {
+            if (end > start && typeof locateOffsetInBlock === 'function') {
+                const h0 = locateOffsetInBlock(block, start);
+                const h1 = locateOffsetInBlock(block, end);
+                if (h0 && h1) {
+                    try {
+                        const sel = window.getSelection();
+                        const range = document.createRange();
+                        if (h0.before) range.setStartBefore(h0.node); else range.setStart(h0.node, h0.offset);
+                        if (h1.before) range.setEndBefore(h1.node); else range.setEnd(h1.node, h1.offset);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                        return true;
+                    } catch (eR) {}
+                }
+            }
+            if (isEditable) {
+                setCaretAtOffset(block, start);
+                if (end > start) {
+                    const sel = window.getSelection();
+                    const aNode = sel.anchorNode, aOff = sel.anchorOffset;
+                    setCaretAtOffset(block, end);
+                    try {
+                        const range = document.createRange();
+                        range.setStart(aNode, aOff);
+                        range.setEnd(sel.anchorNode, sel.anchorOffset);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    } catch (eR) {
+                        setCaretAtOffset(block, end);
+                    }
+                }
+            } else if (typeof locateOffsetInBlock === 'function') {
+                const h0 = locateOffsetInBlock(block, start);
+                if (h0) {
+                    const sel = window.getSelection();
                     const range = document.createRange();
-                    range.setStart(aNode, aOff);
-                    range.setEnd(sel.anchorNode, sel.anchorOffset);
+                    if (h0.before) range.setStartBefore(h0.node); else range.setStart(h0.node, h0.offset);
+                    range.collapse(true);
                     sel.removeAllRanges();
                     sel.addRange(range);
-                } catch (eR) {
-                    setCaretAtOffset(block, end);
                 }
             }
             return true;
@@ -2540,7 +2609,7 @@
          * A control that already has focus — Find, the sidebar, Help — keeps it.
          * A caret the user has already placed again is left where they put it.
          */
-        function restoreEditorFocusAfterChrome() {
+        function restoreEditorFocusAfterChrome(opts) {
             if (pageFocusBelongsElsewhere()) return false;
             if (state.mode === 'source') {
                 if (typeof isSourceFocused === 'function' && isSourceFocused()) return true;
@@ -2555,9 +2624,11 @@
                 return false;
             }
             const sel = window.getSelection();
-            if (sel && sel.rangeCount && sel.anchorNode && editor && editor.contains(sel.anchorNode)) {
+            const needRange = !!(opts && opts.needRange);
+            if (sel && sel.rangeCount && sel.anchorNode && editor && editor.contains(sel.anchorNode)
+                && (!needRange || !sel.isCollapsed)) {
                 const a = document.activeElement;
-                if (a !== editor && !(editor && editor.contains(a))) focusEditorNoScroll();
+                if (editor.isContentEditable && a !== editor && !(editor && editor.contains(a))) focusEditorNoScroll();
                 return true;
             }
             // A selection across lines, newer than the caret remembered: put it back as it
@@ -2572,7 +2643,7 @@
             } catch (eMb) {}
             if (_editorCaretMemory && _editorCaretMemory.kind === 'preview')
                 return placePreviewCaretMemory(_editorCaretMemory);
-            focusEditorNoScroll();
+            if (editor.isContentEditable) focusEditorNoScroll();
             return false;
         }
         window.restoreEditorFocusAfterChrome = restoreEditorFocusAfterChrome;
@@ -2660,7 +2731,11 @@
                 return;
             }
             if (state.mode !== 'source' && (document.activeElement === editor || editor.contains(document.activeElement) || inEditor)) {
-                rememberEditorCaret();
+                const keepCollapsedRange = sel && sel.isCollapsed
+                    && (!document.hasFocus() || (editor.isContentEditable && document.activeElement !== editor && !editor.contains(document.activeElement)))
+                    && _editorCaretMemory && _editorCaretMemory.kind === 'preview'
+                    && _editorCaretMemory.end > _editorCaretMemory.start;
+                if (!keepCollapsedRange) rememberEditorCaret();
                 if (!_formatSelectionFrozen) {
                     cacheSelectedBlocks();
                     cacheInlineSelection();

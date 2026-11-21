@@ -2252,7 +2252,20 @@
 
             const sel = window.getSelection();
             let active = null;
-            if (sel && !sel.isCollapsed && sel.rangeCount > 0 && editor.contains(sel.anchorNode)) {
+            const isSingleLinePaste = String(text).indexOf('\n') < 0 && String(text).indexOf('\r') < 0;
+            let singleBlockReplace = false;
+            if (isSingleLinePaste && sel && !sel.isCollapsed && sel.rangeCount > 0 && editor.contains(sel.anchorNode)) {
+                try {
+                    const r0 = sel.getRangeAt(0);
+                    const sb = getAncestorBlock(r0.startContainer);
+                    const eb = getAncestorBlock(r0.endContainer);
+                    if (sb && eb && sb === eb && !rangeCrossesTableCells(r0)) {
+                        singleBlockReplace = true;
+                        active = sb;
+                    }
+                } catch (eSb) {}
+            }
+            if (!singleBlockReplace && sel && !sel.isCollapsed && sel.rangeCount > 0 && editor.contains(sel.anchorNode)) {
                 try {
                     active = getAncestorBlock(sel.anchorNode);
                     // Across table cells the Delete key's own delete: cells are emptied and
@@ -2262,6 +2275,14 @@
                     if (rangeCrossesTableCells(sel.getRangeAt(0))) document.execCommand('delete');
                     else sel.deleteFromDocument();
                     if (active && !editor.contains(active)) active = null;
+                    if (active && active.classList && active.classList.contains('block')) {
+                        try {
+                            const updated = state.revealOnFocus ? active.innerText : blockHtmlToMarkdown(active);
+                            active.setAttribute('data-raw', updated);
+                            const mid = DocumentModel.modelIndexOfEl(active);
+                            if (mid >= 0) DocumentModel.setBlockRaw(mid, updated);
+                        } catch (eFl) {}
+                    }
                 } catch(err) {}
             }
             if (!active && sel && sel.anchorNode && editor.contains(sel.anchorNode)) {
@@ -2409,10 +2430,14 @@
 
             if (blockTexts.length === 1 && !blockTexts[0].includes('\n')) {
                 let startOff = 0;
+                let endOff = 0;
                 try {
                     if (typeof getPlainOffsetsInBlock === 'function' && active) {
                         const off = getPlainOffsetsInBlock(active);
-                        if (off && off.start != null) startOff = off.start | 0;
+                        if (off && off.start != null) {
+                            startOff = off.start | 0;
+                            endOff = off.end != null ? (off.end | 0) : startOff;
+                        }
                     }
                 } catch (eOff) {}
 
@@ -2432,14 +2457,15 @@
 
                 // Markdown pasted into a line keeps its own marks rather than taking the
                 // caret's: a cut from inside **bold** pasted back made everything after it
-                // bold (0.20.7). Done on the rendered line and checked; else the path below.
+                // bold (0.20.7). Handles both collapsed carets and replacing a selection in
+                // the same block cleanly without resurrecting replaced words.
                 try {
                     const curRaw = active && active.classList && active.classList.contains('block')
                         ? (active.getAttribute('data-raw') || '') : null;
-                    const collapsed = sel && sel.rangeCount && sel.isCollapsed;
-                    if (curRaw != null && collapsed && !state.revealOnFocus && /[*_`~\[]/.test(blockTexts[0])
+                    const canMapLine = sel && sel.rangeCount && (sel.isCollapsed || singleBlockReplace);
+                    if (curRaw != null && canMapLine && !state.revealOnFocus && /[*_`~\[]/.test(blockTexts[0])
                         && typeof insertMarkdownIntoLine === 'function') {
-                        const next = insertMarkdownIntoLine(curRaw, startOff, blockTexts[0]);
+                        const next = insertMarkdownIntoLine(curRaw, startOff, blockTexts[0], endOff);
                         if (next) {
                             active.setAttribute('data-raw', next.raw);
                             renderBlockPreview(active, next.raw);
@@ -4025,16 +4051,27 @@
             // (performing the cut if requested) and return { text, html } for the host clipboard.
             window.tzMenuCopyOrCut = function tzMenuCopyOrCut(isCut) {
                 try {
-                    const a = document.activeElement;
-                    if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')
-                        && a !== sourceEditor && (!editor || !editor.contains(a))) {
-                        const s = a.selectionStart | 0;
-                        const e = a.selectionEnd | 0;
+                    let uiInput = document.activeElement;
+                    if (!(uiInput && (uiInput.tagName === 'INPUT' || uiInput.tagName === 'TEXTAREA')
+                        && uiInput !== sourceEditor && (!editor || !editor.contains(uiInput)))) {
+                        const last = window.__tzLastUiInput;
+                        if (last && last.isConnected && !last.closest('[hidden]') && last.getClientRects().length > 0
+                            && last !== sourceEditor && (!editor || !editor.contains(last))
+                            && (last.selectionEnd | 0) > (last.selectionStart | 0)) {
+                            uiInput = last;
+                        } else {
+                            uiInput = null;
+                        }
+                    }
+                    if (uiInput) {
+                        const s = uiInput.selectionStart | 0;
+                        const e = uiInput.selectionEnd | 0;
                         if (e <= s) return { text: '', html: '' };
-                        const text = String(a.value || '').slice(s, e);
-                        if (isCut && !a.readOnly && !a.disabled) {
-                            a.setRangeText('', s, e, 'start');
-                            a.dispatchEvent(new Event('input', { bubbles: true }));
+                        const text = String(uiInput.value || '').slice(s, e);
+                        if (isCut && !uiInput.readOnly && !uiInput.disabled) {
+                            try { uiInput.focus(); } catch (eF) {}
+                            uiInput.setRangeText('', s, e, 'start');
+                            uiInput.dispatchEvent(new Event('input', { bubbles: true }));
                         }
                         return { text: text, html: '' };
                     }
@@ -4065,7 +4102,7 @@
                     let sel = window.getSelection();
                     if (!sel || !sel.rangeCount || sel.isCollapsed) {
                         if (typeof restoreEditorFocusAfterChrome === 'function') {
-                            restoreEditorFocusAfterChrome();
+                            restoreEditorFocusAfterChrome({ needRange: true });
                         }
                         sel = window.getSelection();
                     }
