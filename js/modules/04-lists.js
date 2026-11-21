@@ -2736,7 +2736,65 @@
 
         function applyFormatInPlaceToSelection(type, forceOff, forceOn) {
             if (!editor) return false;
+            const preLines = trustedFormatDocLines();
+            if (!preLines) return false;
 
+            const selectedIdx = getSelectedBlockIndices();
+            const focusIndices = {};
+            if (selectedIdx.length) {
+                for (let si = 0; si < selectedIdx.length; si++) {
+                    const idx = selectedIdx[si];
+                    if (idx >= 0 && idx < preLines.length) focusIndices[idx] = true;
+                }
+            }
+            // If freeze lost indices, format nothing rather than inventing blank doc
+            if (!Object.keys(focusIndices).length) {
+                // Single-line fallback: last frozen single index or 0
+                if (_selectedFormatIndices && _selectedFormatIndices.length === 1
+                    && _selectedFormatIndices[0] >= 0
+                    && _selectedFormatIndices[0] < preLines.length) {
+                    focusIndices[_selectedFormatIndices[0]] = true;
+                } else {
+                    // Prefer current line among last-good if possible
+                    focusIndices[0] = true;
+                }
+            }
+
+            let olNum = 1;
+            const postLines = [];
+            // Bold, italic, strike and code mark what is selected, not the whole of the
+            // first and last lines (Ed, 2026-11-14).
+            let inlinePlan = null;
+            try { inlinePlan = inlineMarksForSelectedLines(preLines, focusIndices, type); } catch (ePlan) { inlinePlan = null; }
+            for (let i = 0; i < preLines.length; i++) {
+                let raw = preLines[i];
+                if (inlinePlan) {
+                    if (Object.prototype.hasOwnProperty.call(inlinePlan, i)) raw = inlinePlan[i];
+                } else if (focusIndices[i] && String(raw || '').trim() && !isInlineUnmarkableRaw(raw)) {
+                    const n = olNum;
+                    if ((type === 'ol' || type === 'ordered') && forceOn) olNum++;
+                    raw = transformRawForFormat(raw, type, {
+                        forceOff: forceOff,
+                        forceOn: forceOn,
+                        olNum: n,
+                        wholeLines: true
+                    });
+                }
+                if (String(preLines[i] || '').trim() && !String(raw || '').trim()) {
+                    raw = preLines[i];
+                }
+                postLines.push(raw == null ? '' : coerceBlockRaw(raw));
+            }
+            return reloadAfterFormatEdit(preLines, postLines, focusIndices);
+        }
+
+        /**
+         * The whole document as one raw per model block, from sources that survive the
+         * toolbar stealing focus: the model, then the last good snapshot, overlaid with the
+         * frozen selection; the undo stack and the live DOM only when those are empty.
+         * Null when there is nothing trustworthy -- never a blank document.
+         */
+        function trustedFormatDocLines() {
             // --- Build pre lines ONLY from trusted sources (never corrupted live DOM alone) ---
             let preLines = [];
             // Virt / model-first: full document, not only the mounted window
@@ -2792,56 +2850,18 @@
             }
             if (!preLines.length || !preLines.some(function (x) { return String(x || '').trim(); })) {
                 try { console.warn('TypoZen: format aborted — no last-good content'); } catch (e3) {}
-                return false;
+                return null;
             }
+            return preLines;
+        }
 
-            const selectedIdx = getSelectedBlockIndices();
-            const focusIndices = {};
-            if (selectedIdx.length) {
-                for (let si = 0; si < selectedIdx.length; si++) {
-                    const idx = selectedIdx[si];
-                    if (idx >= 0 && idx < preLines.length) focusIndices[idx] = true;
-                }
-            }
-            // If freeze lost indices, format nothing rather than inventing blank doc
-            if (!Object.keys(focusIndices).length) {
-                // Single-line fallback: last frozen single index or 0
-                if (_selectedFormatIndices && _selectedFormatIndices.length === 1
-                    && _selectedFormatIndices[0] >= 0
-                    && _selectedFormatIndices[0] < preLines.length) {
-                    focusIndices[_selectedFormatIndices[0]] = true;
-                } else {
-                    // Prefer current line among last-good if possible
-                    focusIndices[0] = true;
-                }
-            }
-
-            let olNum = 1;
-            const postLines = [];
-            // Bold, italic, strike and code mark what is selected, not the whole of the
-            // first and last lines (Ed, 2026-11-14).
-            let inlinePlan = null;
-            try { inlinePlan = inlineMarksForSelectedLines(preLines, focusIndices, type); } catch (ePlan) { inlinePlan = null; }
-            for (let i = 0; i < preLines.length; i++) {
-                let raw = preLines[i];
-                if (inlinePlan) {
-                    if (Object.prototype.hasOwnProperty.call(inlinePlan, i)) raw = inlinePlan[i];
-                } else if (focusIndices[i] && String(raw || '').trim() && !isInlineUnmarkableRaw(raw)) {
-                    const n = olNum;
-                    if ((type === 'ol' || type === 'ordered') && forceOn) olNum++;
-                    raw = transformRawForFormat(raw, type, {
-                        forceOff: forceOff,
-                        forceOn: forceOn,
-                        olNum: n,
-                        wholeLines: true
-                    });
-                }
-                if (String(preLines[i] || '').trim() && !String(raw || '').trim()) {
-                    raw = preLines[i];
-                }
-                postLines.push(raw == null ? '' : coerceBlockRaw(raw));
-            }
-
+        /**
+         * Apply a formatting edit as one undo step: preLines -> postLines (the line count
+         * may differ), reload the document from postLines, and keep the first focused line
+         * where it was on screen. focusIndices are indices into postLines. False when the
+         * edit changes nothing or would leave the document empty.
+         */
+        function reloadAfterFormatEdit(preLines, postLines, focusIndices, caretOffset) {
             const preNonEmpty = preLines.filter(function (x) { return String(x || '').trim(); }).length;
             const postNonEmpty = postLines.filter(function (x) { return String(x || '').trim(); }).length;
             if (preNonEmpty > 0 && postNonEmpty === 0) return false;
@@ -2878,6 +2898,8 @@
             try {
                 const loadOpts = stickyFocus >= 1 ? { stickyLine: stickyFocus } : undefined;
                 if (loadOpts && va) loadOpts.stickyPad = va.top;
+                // The caller places the caret itself: the deferred restore keeps a live one.
+                if (loadOpts && caretOffset != null) loadOpts.stickyCaret = caretOffset;
                 loadMarkdownContent(postContent, loadOpts);
             } finally {
                 if (hm) hm.isRestoring = wasRestoring;
@@ -3177,7 +3199,16 @@
             }
             // No heading, quote or list marker on a table, a fence, a rule, a callout's marker
             // line or a picture (in Source these arrive one line at a time).
-            if (/^(h[1-6]|quote|list|ol|ordered|checklist)$/.test(type) && isInlineUnmarkableRaw(raw)) return raw;
+            if (/^(h[1-6]|quote|list|ol|ordered|checklist|para)$/.test(type) && isInlineUnmarkableRaw(raw)) return raw;
+            // Normal text: the line without its heading, list or quote marker, and nothing
+            // else changed. A line with no marker comes back as written, indent included.
+            if (type === 'para') {
+                if (/^#{1,6}\s+/.test(raw)) return raw.replace(/^#{1,6}\s+/, '');
+                const li = parseListLine(raw);
+                if (li) return String(li.body || '');
+                if (/^>/.test(raw)) return raw.replace(/^>[ \t]?/, '');
+                return raw;
+            }
             if (type === 'h1') {
                 const isH1 = /^#\s+/.test(raw) && !/^##/.test(raw);
                 // forceOff / toggle-off when already H1; forceOn always applies
@@ -3292,6 +3323,13 @@
         }
 
         function applyFormatting(type) {
+            // Markdown formatting has no meaning in a code file: H2 on a C# line wrote "## "
+            // into the code. The controls are greyed there too; this covers the shortcuts.
+            if (typeof isCodeDocument === 'function' && isCodeDocument()) return;
+            if (/^callout:/.test(String(type))) {
+                applyCallout(String(type).slice(8));
+                return;
+            }
             if (type === 'table') {
                 openTableSizePicker();
                 return;
@@ -3335,7 +3373,7 @@
                 const sel = full.substring(start, end);
 
                 // Expand to full lines when selection spans multiple lines or is a block format
-                const blockTypes = { h1:1, h2:1, h3:1, h4:1, h5:1, h6:1, quote:1, list:1, ol:1, ordered:1, checklist:1 };
+                const blockTypes = { h1:1, h2:1, h3:1, h4:1, h5:1, h6:1, quote:1, list:1, ol:1, ordered:1, checklist:1, para:1 };
                 let s = start, e = end;
                 if (blockTypes[type] || sel.indexOf('\n') >= 0) {
                     while (s > 0 && full.charAt(s - 1) !== '\n') s--;
@@ -3587,6 +3625,250 @@
             updateOutline();
             HistoryManager.commitEdit();
         }
+
+        // --- Callouts (GitHub alerts) -------------------------------------------------
+        //
+        // The rules (Ed approved 2026-11-21) -- what you do, what is written:
+        //   plain line(s), Callout > Note    "> [!NOTE]" above, "> " on each line; a blank
+        //                                    line inside the selection becomes ">" so the box
+        //                                    stays whole
+        //   an empty line                    "> [!NOTE]" and an empty "> " body line
+        //   inside a plain quote             a blank line before the header when the line
+        //                                    above is a quote line (GitHub reads [!NOTE] only
+        //                                    on a quote's first line)
+        //   any text right after the box     a blank line between, or GitHub pulls it into
+        //                                    the box (lazy continuation)
+        //   in a callout, another type       the header's type changes; a title is kept
+        //   in a callout, its own type       the header goes and its lines lose "> "; a
+        //                                    title after the header stays as a line
+        // A code block, table, rule, picture-only line or another callout's header in the
+        // selection refuses the whole command: half a box is worse than none.
+
+        const CALLOUT_KINDS = ['note', 'tip', 'important', 'warning', 'caution'];
+        const CALLOUT_HEADER_RE = /^(>\s*\[!)(NOTE|TIP|IMPORTANT|WARNING|CAUTION)(\][\s\S]*)$/i;
+
+        /** For each line, true when it is a fence line or inside a fenced block. */
+        function fenceMapOfLines(lines) {
+            const out = [];
+            let open = null;
+            for (let i = 0; i < lines.length; i++) {
+                const s = String(lines[i] == null ? '' : lines[i]);
+                // A Preview block can hold a whole fenced block (several lines).
+                if (s.indexOf('\n') >= 0) { out.push(true); continue; }
+                const m = s.match(/^\s*(```+|~~~+)/);
+                if (open) {
+                    out.push(true);
+                    if (m && m[1].charAt(0) === open.charAt(0) && m[1].length >= open.length) open = null;
+                } else if (m) {
+                    out.push(true);
+                    open = m[1];
+                } else out.push(false);
+            }
+            return out;
+        }
+
+        /** The callout holding line i: { h: header index, e: last body index, kind, m }. */
+        function calloutAround(lines, i, fence) {
+            const L = function (k) { return String(lines[k] == null ? '' : lines[k]); };
+            fence = fence || fenceMapOfLines(lines);
+            for (let j = i; j >= 0; j--) {
+                if (fence[j]) return null;
+                const m = L(j).match(CALLOUT_HEADER_RE);
+                if (m) {
+                    let e = j;
+                    while (e + 1 < lines.length && !fence[e + 1] && /^>/.test(L(e + 1))
+                        && !CALLOUT_HEADER_RE.test(L(e + 1))) e++;
+                    return { h: j, e: e, kind: m[2].toLowerCase(), m: m };
+                }
+                if (!/^>/.test(L(j))) return null;
+            }
+            return null;
+        }
+
+        /**
+         * The edit Callout > <kind> makes on lines i0..i1: replace lines start..end-1 with
+         * `lines`; `focus` is [first, last] of the box's lines afterwards. Null: nothing to do.
+         */
+        function calloutPlan(lines, i0, i1, kind) {
+            kind = String(kind || '').toLowerCase();
+            if (CALLOUT_KINDS.indexOf(kind) < 0) return null;
+            const n = lines.length;
+            if (!n) return null;
+            i0 = Math.max(0, Math.min(n - 1, i0 | 0));
+            i1 = Math.max(0, Math.min(n - 1, i1 | 0));
+            if (i0 > i1) { const t = i0; i0 = i1; i1 = t; }
+            const L = function (k) { return String(lines[k] == null ? '' : lines[k]); };
+            const fence = fenceMapOfLines(lines);
+            if (fence[i0]) return null;
+
+            const box = calloutAround(lines, i0, fence);
+            if (box) {
+                const m = box.m;
+                if (box.kind !== kind) {
+                    return { start: box.h, end: box.h + 1, lines: [m[1] + kind.toUpperCase() + m[3]],
+                        focus: [box.h, box.e], action: 'retype' };
+                }
+                const out = [];
+                const title = m[3].slice(1).trim();
+                if (title) out.push(title);
+                for (let k = box.h + 1; k <= box.e; k++) out.push(L(k).replace(/^>[ \t]?/, ''));
+                const last = out.length ? box.h + out.length - 1 : Math.max(0, box.h - 1);
+                return { start: box.h, end: box.e + 1, lines: out,
+                    focus: [out.length ? box.h : last, last], action: 'remove' };
+            }
+
+            let a = i0, b = i1;
+            while (a < b && !L(a).trim()) a++;
+            while (b > a && !L(b).trim()) b--;
+            for (let k = a; k <= b; k++) {
+                if (fence[k]) return null;
+                if (L(k).trim() && isInlineUnmarkableRaw(L(k))) return null;
+            }
+            const body = [];
+            if (a === b && !L(a).trim()) body.push('> ');
+            else {
+                for (let k = a; k <= b; k++) {
+                    const r = L(k);
+                    body.push(!r.trim() ? '>' : (/^>/.test(r) ? r : '> ' + r));
+                }
+            }
+            const out = [];
+            if (a > 0 && !fence[a - 1] && /^>/.test(L(a - 1))) out.push('');
+            const header = a + out.length;
+            out.push('> [!' + kind.toUpperCase() + ']');
+            for (let k = 0; k < body.length; k++) out.push(body[k]);
+            if (b + 1 < n && L(b + 1).trim()) out.push('');
+            return { start: a, end: b + 1, lines: out,
+                focus: [header, header + body.length], action: 'insert' };
+        }
+
+        /** Callout > <kind> on the selected lines, in Preview or Source. */
+        function applyCallout(kind) {
+            if (state.mode === 'source') {
+                if (!sourceEditor) return false;
+                sourceEditor.focus();
+                const full = sourceEditor.value;
+                const s0 = sourceEditor.selectionStart || 0;
+                let s1 = sourceEditor.selectionEnd || 0;
+                // A selection ending at the very start of a line does not take that line.
+                if (s1 > s0 && full.charAt(s1 - 1) === '\n') s1--;
+                const lines = full.split('\n');
+                const lineOf = function (pos) {
+                    let n = 0;
+                    for (let i = 0; i < pos && i < full.length; i++) if (full.charCodeAt(i) === 10) n++;
+                    return n;
+                };
+                const plan = calloutPlan(lines, lineOf(s0), lineOf(s1), kind);
+                if (!plan) return false;
+                const lineStart = function (li) {
+                    let pos = 0;
+                    for (let i = 0; i < li; i++) pos += lines[i].length + 1;
+                    return pos;
+                };
+                let from = lineStart(plan.start);
+                let to = lineStart(plan.end - 1) + lines[plan.end - 1].length;
+                let text = plan.lines.join('\n');
+                if (!plan.lines.length) {
+                    // The lines go entirely, with one of the line breaks around them.
+                    if (to < full.length) to++;
+                    else if (from > 0) from--;
+                    text = '';
+                }
+                HistoryManager.beginEdit();
+                sourceEditor.setRangeText(text, from, to, 'end');
+                try {
+                    const after = sourceEditor.value.split('\n');
+                    const fl = Math.min(plan.focus[1], after.length - 1);
+                    let p = 0;
+                    for (let i = 0; i < fl; i++) p += after[i].length + 1;
+                    p += after[fl].length;
+                    sourceEditor.setSelectionRange(p, p);
+                } catch (eSel) {}
+                resizeSourceEditor();
+                updateStats();
+                HistoryManager.commitEdit();
+                return true;
+            }
+
+            if (!editor) return false;
+            let preLines = trustedFormatDocLines();
+            // An empty document has no "last good" text to protect, and a callout is a fine
+            // first thing to write in it.
+            if (!preLines && typeof DocumentModel !== 'undefined' && DocumentModel.blocks
+                && !DocumentModel.blocks.some(function (b) { return String(b && b.raw || '').trim(); })) {
+                preLines = DocumentModel.blocks.length
+                    ? DocumentModel.blocks.map(function () { return ''; }) : [''];
+            }
+            if (!preLines) return false;
+            let idx = getSelectedBlockIndices().filter(function (n) { return n >= 0 && n < preLines.length; });
+            if (!idx.length) return false;
+            idx.sort(function (x, y) { return x - y; });
+            const plan = calloutPlan(preLines, idx[0], idx[idx.length - 1], kind);
+            if (!plan) return false;
+            const postLines = preLines.slice(0, plan.start)
+                .concat(plan.lines.map(function (x) { return coerceBlockRaw(x); }))
+                .concat(preLines.slice(plan.end));
+            const focusIndices = {};
+            for (let k = plan.focus[0]; k <= plan.focus[1]; k++) {
+                if (k >= 0 && k < postLines.length) focusIndices[k] = true;
+            }
+            if (!Object.keys(focusIndices).length) focusIndices[Math.min(plan.start, postLines.length - 1)] = true;
+            if (!reloadAfterFormatEdit(preLines, postLines, focusIndices, 0)) return false;
+            // The caret goes to the end of the box's last line, ready to type into it.
+            try {
+                const el = mountedBlockAtFormatIndex(plan.focus[1]);
+                if (el) {
+                    focusBlock(el, (el.textContent || '').length);
+                    currentActiveBlock = el;
+                }
+            } catch (eF) {}
+            return true;
+        }
+
+        /**
+         * What the line at the caret is, for the ticks in the Format menus:
+         * { block: 'para'|'h1'..'h6'|'quote'|'list'|'ol'|'checklist', callout: kind|null }.
+         */
+        function formatStateAtCaret() {
+            const st = { block: 'para', callout: null };
+            try {
+                let lines, i;
+                if (state.mode === 'source') {
+                    if (!sourceEditor) return st;
+                    const full = sourceEditor.value;
+                    const pos = sourceEditor.selectionStart || 0;
+                    lines = full.split('\n');
+                    i = 0;
+                    for (let k = 0; k < pos && k < full.length; k++) if (full.charCodeAt(k) === 10) i++;
+                } else {
+                    const idx = getSelectedBlockIndices();
+                    if (!idx.length || typeof DocumentModel === 'undefined' || !DocumentModel.blocks) return st;
+                    i = Math.min.apply(null, idx);
+                    // Only the quote run around the caret is read, not the whole document.
+                    const raw = function (k) {
+                        const el = mountedBlockAtFormatIndex(k);
+                        if (el) return readBlockRawSafe(el);
+                        const b = DocumentModel.blocks[k];
+                        return b ? coerceBlockRaw(b.raw || '') : '';
+                    };
+                    let lo = i;
+                    while (lo > 0 && /^>/.test(raw(lo))) lo--;
+                    lines = [];
+                    for (let k = lo; k <= i; k++) lines.push(raw(k));
+                    i = i - lo;
+                }
+                const r = String(lines[i] == null ? '' : lines[i]);
+                const hm = r.match(/^(#{1,6})\s+/);
+                const li = parseListLine(r);
+                if (hm) st.block = 'h' + hm[1].length;
+                else if (li) st.block = li.kind === 'ul' ? 'list' : li.kind === 'ol' ? 'ol' : li.kind === 'task' ? 'checklist' : 'para';
+                else if (/^>/.test(r)) st.block = 'quote';
+                const box = calloutAround(lines, i);
+                if (box) st.callout = box.kind;
+            } catch (e) {}
+            return st;
+        }
+        window.tzFormatState = function () { return JSON.stringify(formatStateAtCaret()); };
 
         /** Plain offsets for the current (or cached) selection inside a block. */
         function resolveBlockPlainOffsets(block) {
