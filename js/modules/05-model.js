@@ -4889,6 +4889,46 @@
             return p.split('>').slice(1).map(function () { return '>'; }).join(' ') + ' ';
         }
 
+        /**
+         * A point in a line Reveal draws as its Markdown, as an offset in that Markdown: text
+         * counts its characters and each <br> one line break (textContent counts none).
+         */
+        function revealedOffsetOfPoint(block, node, offset) {
+            const r = document.createRange();
+            r.selectNodeContents(block);
+            r.setEnd(node, offset);
+            let n = 0;
+            const walk = function (el) {
+                for (let c = el.firstChild; c; c = c.nextSibling) {
+                    if (c.nodeType === 3) n += c.nodeValue.length;
+                    else if (c.nodeName === 'BR') n += 1;
+                    else walk(c);
+                }
+            };
+            walk(r.cloneContents());
+            return n;
+        }
+
+        /** The caret at a Markdown offset in a line Reveal draws (the inverse of the above). */
+        function placeCaretAtRevealedOffset(block, target) {
+            let left = Math.max(0, target | 0);
+            const sel = window.getSelection();
+            const range = document.createRange();
+            for (let c = block.firstChild; c; c = c.nextSibling) {
+                if (c.nodeType === 3) {
+                    if (left <= c.nodeValue.length) { range.setStart(c, left); left = -1; break; }
+                    left -= c.nodeValue.length;
+                } else if (c.nodeName === 'BR') {
+                    if (left === 0) { range.setStartBefore(c); left = -1; break; }
+                    left -= 1;
+                }
+            }
+            if (left >= 0) { range.selectNodeContents(block); range.collapse(false); }
+            range.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(range);
+        }
+
         function handleEnterAtBlock(block, shiftKey, opts) {
             if (!block) return;
             const skipHistory = !!(opts && opts.skipHistory);
@@ -4897,6 +4937,32 @@
                 && block.contains(sel.getRangeAt(0).endContainer));
             const wasCollapsed = !!(sel && sel.isCollapsed);
             if (selInBlock && block.querySelector('pre') && enterInCodeBlock(block, sel.getRangeAt(0), opts)) return;
+            // Reveal draws a code block or a table as its Markdown, several lines in one block.
+            // Enter there is a line break in that Markdown, as in Source. Splitting the block
+            // (the path below) and tidying each half as one line moved the breaks: the closing
+            // fence ended up on the last code line and the block swallowed the rest of the
+            // document; a table row broke in the wrong place (2026-11-21).
+            if (selInBlock && isRevealedBlock(block)) {
+                const md0 = revealedMarkdownOf(block);
+                if (isMultilineBlockRaw(md0)) {
+                    const r0 = sel.getRangeAt(0);
+                    const a = revealedOffsetOfPoint(block, r0.startContainer, r0.startOffset);
+                    const b = wasCollapsed ? a : revealedOffsetOfPoint(block, r0.endContainer, r0.endOffset);
+                    // At the very end, Enter leaves the block for a new line below, as it does
+                    // with Reveal off (the path below keeps a fence or table whole): a break
+                    // at the end of a block is no place a caret can stay.
+                    const atEnd = wasCollapsed && a >= md0.replace(/\n+$/, '').length;
+                    if (!atEnd) {
+                        if (!skipHistory) HistoryManager.beginEdit();
+                        writeBlockRaw(block, md0.slice(0, a) + '\n' + md0.slice(b));
+                        placeCaretAtRevealedOffset(block, a + 1);
+                        try { refreshLastGoodDocRaws(); } catch (eRl) {}
+                        if (!skipHistory) HistoryManager.commitEdit();
+                        updateStats();
+                        return;
+                    }
+                }
+            }
             // A table is one block, and splitting it destroyed it. Tab moves between cells;
             // Enter with a selection deletes the selected range inside the cell without splitting.
             // A collapsed caret that is not in a cell has already fallen out of the grid
