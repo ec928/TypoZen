@@ -2788,6 +2788,10 @@
             const focusKeys = Object.keys(focusIndices).map(Number).sort(function (a, b) { return a - b; });
             const firstIdx = focusKeys.length ? focusKeys[0] : null;
             const lastIdx = focusKeys.length ? focusKeys[focusKeys.length - 1] : null;
+            const fzInline = (inlinePlan && typeof _mbSelFreeze !== 'undefined' && _mbSelFreeze
+                && firstIdx != null && lastIdx != null
+                && _mbSelFreeze.fromIdx === firstIdx && _mbSelFreeze.toIdx === lastIdx)
+                ? String(_mbSelFreeze.suffix || '') : '';
             // For paragraph-level formats (!inlinePlan), pass caretOffset 0 so the deferred
             // sticky restore keeps the live caret we place at the end of the last altered block,
             // matching Callout, Heading and Quote.
@@ -2808,6 +2812,40 @@
                     _inlineSelCache = null;
                     snapshotFormatSelectionFromEditor();
                 } catch (eEnd) {}
+            } else if (ok && inlinePlan && currentActiveBlock) {
+                try {
+                    const postBi = formatBlockIndex(currentActiveBlock);
+                    const bi = postBi >= 0 ? postBi : (lastIdx != null ? lastIdx : -1);
+                    if (bi >= 0 && typeof HistoryManager !== 'undefined' && typeof HistoryManager.setTopCarets === 'function') {
+                        if (!fzInline) {
+                            const c = { mode: 'wysiwyg', blockIndex: bi, endOfBlock: true, exact: true };
+                            if (firstIdx != null && firstIdx !== bi) c.anchorIndex = firstIdx;
+                            HistoryManager.setTopCarets(c, c);
+                        } else {
+                            const postEndOff = Math.max(0, (currentActiveBlock.textContent || '').length - fzInline.length);
+                            let preBody = String(preLines[bi] == null ? '' : preLines[bi]);
+                            if (typeof splitInlineFormatPrefix === 'function') {
+                                const sp = splitInlineFormatPrefix(preBody);
+                                preBody = sp.body;
+                                if (sp.prefix && /^#/.test(sp.prefix)) {
+                                    const cm = preBody.match(/\s+#+\s*$/);
+                                    if (cm) preBody = preBody.slice(0, preBody.length - cm[0].length);
+                                }
+                            }
+                            const prePlainLen = (typeof plainAndMarksFromMarkdown === 'function')
+                                ? plainAndMarksFromMarkdown(preBody).plain.length
+                                : preBody.length;
+                            const preEndOff = Math.max(0, prePlainLen - fzInline.length);
+                            const redoC = { mode: 'wysiwyg', blockIndex: bi, offset: postEndOff, exact: true };
+                            const undoC = { mode: 'wysiwyg', blockIndex: bi, offset: preEndOff, exact: true };
+                            if (firstIdx != null && firstIdx !== bi) {
+                                redoC.anchorIndex = firstIdx;
+                                undoC.anchorIndex = firstIdx;
+                            }
+                            HistoryManager.setTopCarets(redoC, undoC);
+                        }
+                    }
+                } catch (eInEnd) {}
             }
             return ok;
         }
@@ -3487,11 +3525,12 @@
                 updateStats();
                 HistoryManager.commitEdit();
                 const postEnd = s + out.length;
+                const isBlockSrc = !!blockTypes[type];
                 if (typeof HistoryManager.setTopCarets === 'function') {
-                    HistoryManager.setTopCarets(
-                        { mode: 'source', start: postEnd, end: postEnd, exact: true },
-                        { mode: 'source', start: e, end: e, exact: true }
-                    );
+                    const rc = { mode: 'source', start: postEnd, end: postEnd, exact: true };
+                    const uc = { mode: 'source', start: e, end: e, exact: true };
+                    if (isBlockSrc) { rc.endOfBlock = true; uc.endOfBlock = true; }
+                    HistoryManager.setTopCarets(rc, uc);
                 }
                 if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
                 return;
@@ -3667,9 +3706,12 @@
             HistoryManager.commitEdit();
             try {
                 const postBi = formatBlockIndex(currentActiveBlock);
+                const firstPostBi = targets.length ? formatBlockIndex(targets[0]) : -1;
                 if (postBi >= 0 && typeof HistoryManager !== 'undefined' && typeof HistoryManager.setTopCarets === 'function') {
+                    const redoCaret = { mode: 'wysiwyg', blockIndex: postBi, endOfBlock: true, exact: true };
+                    if (firstPostBi >= 0 && firstPostBi !== postBi) redoCaret.anchorIndex = firstPostBi;
                     HistoryManager.setTopCarets(
-                        { mode: 'wysiwyg', blockIndex: postBi, endOfBlock: true, exact: true },
+                        redoCaret,
                         { mode: 'wysiwyg', blockIndex: preBi >= 0 ? preBi : postBi, endOfBlock: true, exact: true }
                     );
                 }
@@ -3842,8 +3884,8 @@
                 HistoryManager.commitEdit();
                 if (typeof HistoryManager.setTopCarets === 'function') {
                     HistoryManager.setTopCarets(
-                        { mode: 'source', start: postCaretPos, end: postCaretPos, exact: true },
-                        { mode: 'source', start: preEnd, end: preEnd, exact: true }
+                        { mode: 'source', start: postCaretPos, end: postCaretPos, endOfBlock: true, exact: true },
+                        { mode: 'source', start: preEnd, end: preEnd, endOfBlock: true, exact: true }
                     );
                 }
                 if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
@@ -4041,160 +4083,6 @@
         }
 
         /**
-         * Pure split helper for partial-block heading/quote formatting: maps plain offsets
-         * via plainRangeToRawOffsets and keeps inline emphasis/link/code spans balanced
-         * across before/mid/after pieces so no stray markers are left behind.
-         */
-        function splitRawForBlockFormat(raw, plainStart, plainEnd, type, opts) {
-            raw = String(raw == null ? '' : raw);
-            const offs = plainRangeToRawOffsets(raw, plainStart, plainEnd);
-            const spans = offs.spans || [];
-            const plainToRaw = offs.plainToRaw || [];
-            if (plainStart > plainEnd) { const t = plainStart; plainStart = plainEnd; plainEnd = t; }
-            const ps = Math.max(0, Math.min(plainToRaw.length, plainStart | 0));
-            const pe = Math.max(ps, Math.min(plainToRaw.length, plainEnd | 0));
-            let tps = ps, tpe = pe;
-            while (tps < tpe && /\s/.test(raw.charAt(plainToRaw[tps]))) tps++;
-            while (tpe > tps && /\s/.test(raw.charAt(plainToRaw[tpe - 1]))) tpe--;
-            if (tps >= tpe) return null;
-            let r0 = plainToRaw[tps];
-            let r1 = plainToRaw[tpe - 1] + 1;
-
-            let changed = true;
-            while (changed) {
-                changed = false;
-                for (let si = 0; si < spans.length; si++) {
-                    const s = spans[si];
-                    if (s.kind === 'code' || s.kind === 'image') {
-                        if (s.openStart < r1 && s.closeEnd > r0) {
-                            const n0 = Math.min(r0, s.openStart);
-                            const n1 = Math.max(r1, s.closeEnd);
-                            if (n0 !== r0 || n1 !== r1) { r0 = n0; r1 = n1; changed = true; }
-                        }
-                        continue;
-                    }
-                    if (s.openStart < r0 && r0 >= s.openEnd && !/\S/.test(raw.slice(s.openEnd, r0))) {
-                        r0 = s.openStart;
-                        changed = true;
-                    }
-                    if (s.closeEnd > r1 && r1 <= s.closeStart && !/\S/.test(raw.slice(r1, s.closeStart))) {
-                        r1 = s.closeEnd;
-                        changed = true;
-                    }
-                }
-            }
-
-            let before = raw.slice(0, r0);
-            let mid = raw.slice(r0, r1);
-            let after = raw.slice(r1);
-            if (!String(mid).trim()) return null;
-
-            const lead = mid.match(/^\s*/);
-            const trail = mid.match(/\s*$/);
-            if (lead && lead[0]) { before += lead[0]; mid = mid.slice(lead[0].length); }
-            if (trail && trail[0]) { after = trail[0] + after; mid = mid.slice(0, mid.length - trail[0].length); }
-            if (!mid) return null;
-
-            const crossStart = [];
-            const crossEnd = [];
-            const enclosing = [];
-            for (let si = 0; si < spans.length; si++) {
-                const s = spans[si];
-                if (s.kind === 'code' || s.kind === 'image') continue;
-                if (s.openStart < r0 && r1 < s.closeStart) {
-                    enclosing.push(s);
-                } else if (s.openStart < r0 && r0 < s.closeStart && s.closeStart < r1) {
-                    crossStart.push(s);
-                } else if (r0 <= s.openStart && s.openStart < r1 && r1 < s.closeStart) {
-                    crossEnd.push(s);
-                }
-            }
-            crossStart.sort(function (a, b) { return b.openStart - a.openStart; });
-            for (let si = 0; si < crossStart.length; si++) {
-                const s = crossStart[si];
-                const openStr = raw.slice(s.openStart, s.openEnd);
-                const closeStr = raw.slice(s.closeStart, s.closeEnd);
-                const mb = before.match(/^([\s\S]*?)(\s*)$/);
-                before = mb[1] + closeStr + mb[2];
-                const mm = mid.match(/^(\s*)([\s\S]*)$/);
-                mid = mm[1] + openStr + mm[2];
-            }
-            crossEnd.sort(function (a, b) { return a.closeStart - b.closeStart; });
-            for (let si = 0; si < crossEnd.length; si++) {
-                const s = crossEnd[si];
-                const openStr = raw.slice(s.openStart, s.openEnd);
-                const closeStr = raw.slice(s.closeStart, s.closeEnd);
-                const mm = mid.match(/^([\s\S]*?)(\s*)$/);
-                mid = mm[1] + closeStr + mm[2];
-                const ma = after.match(/^(\s*)([\s\S]*)$/);
-                after = ma[1] + openStr + ma[2];
-            }
-            enclosing.sort(function (a, b) { return b.openStart - a.openStart; });
-            for (let si = 0; si < enclosing.length; si++) {
-                const s = enclosing[si];
-                const openStr = raw.slice(s.openStart, s.openEnd);
-                const closeStr = raw.slice(s.closeStart, s.closeEnd);
-                const mb = before.match(/^([\s\S]*?)(\s*)$/);
-                before = mb[1] + closeStr + mb[2];
-                mid = openStr + mid + closeStr;
-                const ma = after.match(/^(\s*)([\s\S]*)$/);
-                after = ma[1] + openStr + ma[2];
-            }
-
-            if (!String(before).trim()) before = '';
-            if (!String(after).trim()) after = '';
-            const formatted = transformRawForFormat(mid, type, opts || {});
-            const pieces = [];
-            if (before.length) pieces.push(before);
-            pieces.push(formatted);
-            if (after.length) pieces.push(after);
-            return { pieces: pieces, fmtIdx: before.length ? 1 : 0 };
-        }
-
-        /**
-         * If the user selected only part of a paragraph, split into before/mid/after
-         * and apply block format (heading/quote) to mid only. Returns new block list
-         * or null to fall back to whole-block format.
-         */
-        function trySplitAndFormatBlock(block, type, opts) {
-            const raw = typeof readBlockRawSafe === 'function' ? readBlockRawSafe(block) : getBlockRaw(block);
-            if (raw == null || !String(raw).trim()) return null;
-
-            // Multi-line content handled by formatLinesInBlock
-            if (String(raw).indexOf('\n') >= 0) {
-                return formatLinesInBlock(block, type, opts);
-            }
-
-            // A list item, quote or heading is one line with one marker: the format goes on the
-            // whole line. Splitting it at the selection counted the marker as text and cut
-            // words in two ("1. T021 T022" + quote gave "> T0" / "21 T022").
-            if (splitInlineFormatPrefix(raw).prefix.trim()) return null;
-
-            const off = resolveBlockPlainOffsets(block);
-            if (!off || off.start === off.end) return null;
-
-            // Full-block selection → normal whole-block path
-            const plainLen = (function () {
-                try {
-                    const r = document.createRange();
-                    r.selectNodeContents(block);
-                    return r.toString().length;
-                } catch (e) {
-                    return String(raw).length;
-                }
-            })();
-            if (off.start <= 0 && off.end >= plainLen) return null;
-
-            const split = splitRawForBlockFormat(raw, off.start, off.end, type, opts);
-            if (!split) return null;
-
-            const blocks = replaceBlockWithPieces(block, split.pieces);
-            // Point current at the formatted piece
-            if (blocks[split.fmtIdx]) currentActiveBlock = blocks[split.fmtIdx];
-            return blocks;
-        }
-
-        /**
          * Block contains hard newlines (Shift+Enter, etc.): apply format only to
          * the line(s) intersecting the selection/caret, then split into real blocks.
          */
@@ -4256,14 +4144,21 @@
             });
 
             const blocks = replaceBlockWithPieces(block, out);
-            // Focus first formatted non-empty line
-            for (let i = lineStart; i <= lineEnd && i < blocks.length; i++) {
-                if (String(out[i] || '').trim()) {
-                    currentActiveBlock = blocks[i];
+            const formatted = blocks.slice(lineStart, lineEnd + 1);
+            const activeList = formatted.length ? formatted : blocks;
+            // Focus the last formatted non-empty line (matching multi-block format).
+            let picked = null;
+            for (let i = activeList.length - 1; i >= 0; i--) {
+                const rawIdx = formatted.length ? (lineStart + i) : i;
+                if (String(out[rawIdx] || '').trim()) {
+                    picked = activeList[i];
                     break;
                 }
             }
-            return blocks;
+            if (picked || activeList.length) {
+                currentActiveBlock = picked || activeList[activeList.length - 1];
+            }
+            return activeList;
         }
 
         /**
@@ -4435,10 +4330,88 @@
                 }
             },
 
+            _convertCaretForMode(caret, content, targetMode) {
+                if (!caret) return null;
+                const md = String(content == null ? '' : content);
+                const mapLineBody = function (lineRaw) {
+                    const sp = (typeof splitInlineFormatPrefix === 'function')
+                        ? splitInlineFormatPrefix(lineRaw)
+                        : { prefix: '', body: lineRaw };
+                    let body = sp.body;
+                    if (sp.prefix && /^#/.test(sp.prefix)) {
+                        const cm = body.match(/\s+#+\s*$/);
+                        if (cm) body = body.slice(0, body.length - cm[0].length);
+                    }
+                    const p2r = (typeof plainRangeToRawOffsets === 'function'
+                        ? (plainRangeToRawOffsets(body, 0, 0).plainToRaw || [])
+                        : []);
+                    return { prefixLen: sp.prefix.length, bodyLen: body.length, p2r: p2r };
+                };
+                if (targetMode === 'source' && caret.mode !== 'source') {
+                    if (!caret.exact) return caret;
+                    const blocks = (typeof DocumentModel !== 'undefined' && DocumentModel.blocks)
+                        ? DocumentModel.blocks : [];
+                    let bi = caret.blockIndex | 0;
+                    if (bi < 0) bi = 0;
+                    if (blocks.length && bi >= blocks.length) bi = blocks.length - 1;
+                    const startLine1 = (typeof modelBlockStartLine === 'function')
+                        ? modelBlockStartLine(bi) : (bi + 1);
+                    const bl = (blocks[bi] && typeof linesInBlockRaw === 'function')
+                        ? linesInBlockRaw(blocks[bi].raw) : 1;
+                    const targetLine1 = caret.endOfBlock
+                        ? (startLine1 + Math.max(0, bl - 1))
+                        : startLine1;
+                    let lineStart = 0;
+                    let curLine = 1;
+                    while (curLine < targetLine1 && lineStart < md.length) {
+                        const nl = md.indexOf('\n', lineStart);
+                        if (nl < 0) {
+                            lineStart = md.lastIndexOf('\n') + 1;
+                            break;
+                        }
+                        lineStart = nl + 1;
+                        curLine++;
+                    }
+                    let lineEnd = md.indexOf('\n', lineStart);
+                    if (lineEnd < 0) lineEnd = md.length;
+                    if (caret.endOfBlock) {
+                        return { mode: 'source', start: lineEnd, end: lineEnd, endOfBlock: true, exact: true };
+                    }
+                    const info = mapLineBody(md.slice(lineStart, lineEnd));
+                    const want = Math.max(0, caret.offset | 0);
+                    const rawInBody = want < info.p2r.length ? info.p2r[want] : info.bodyLen;
+                    const srcOff = Math.min(lineEnd, lineStart + info.prefixLen + rawInBody);
+                    return { mode: 'source', start: srcOff, end: srcOff, exact: true };
+                }
+                if (targetMode !== 'source' && caret.mode === 'source') {
+                    let pos = caret.end != null ? (caret.end | 0) : (caret.start | 0);
+                    if (pos < 0) pos = 0;
+                    if (pos > md.length) pos = md.length;
+                    const line1 = (typeof lineFromMarkdownOffset === 'function')
+                        ? lineFromMarkdownOffset(md, pos) : 1;
+                    const loc = (typeof modelLocationFromDocumentLine === 'function')
+                        ? modelLocationFromDocumentLine(line1) : { blockIndex: 0, within: 0 };
+                    const bi = loc ? (loc.blockIndex | 0) : 0;
+                    if (caret.endOfBlock) {
+                        return { mode: 'wysiwyg', blockIndex: bi, endOfBlock: true, exact: !!caret.exact };
+                    }
+                    let lineStart = pos;
+                    while (lineStart > 0 && md.charCodeAt(lineStart - 1) !== 10) lineStart--;
+                    let lineEnd = pos;
+                    while (lineEnd < md.length && md.charCodeAt(lineEnd) !== 10) lineEnd++;
+                    const info = mapLineBody(md.slice(lineStart, lineEnd));
+                    const relRaw = Math.max(0, (pos - lineStart) - info.prefixLen);
+                    let p = 0;
+                    while (p < info.p2r.length && info.p2r[p] < relRaw) p++;
+                    return { mode: 'wysiwyg', blockIndex: bi, offset: p, exact: !!caret.exact };
+                }
+                return caret;
+            },
+
             _restoreCaret(caret, keepTop) {
                 try {
                     if (!caret) return;
-                    if (caret.mode === 'source' && sourceEditor) {
+                    if (state.mode === 'source' && caret.mode === 'source' && sourceEditor) {
                         const n = sourceEditor.value.length;
                         let s = caret.start | 0;
                         let e = caret.end != null ? (caret.end | 0) : s;
@@ -4471,13 +4444,18 @@
                         if (anchorIdx >= modelN) anchorIdx = modelN - 1;
                         try {
                             if (typeof ensureModelBlockVisible === 'function') {
-                                if (keepTop != null && anchorIdx !== idx) {
-                                    anchorEl = ensureModelBlockVisible(anchorIdx, { topPad: keepTop });
+                                const targetPad = keepTop != null ? keepTop : 48;
+                                if (anchorIdx !== idx) {
+                                    anchorEl = ensureModelBlockVisible(anchorIdx, { topPad: targetPad });
                                     if (typeof mountedBlockAtFormatIndex === 'function') {
                                         try { block = mountedBlockAtFormatIndex(idx); } catch (eM) {}
                                     }
                                     if (!block) {
                                         block = editor.querySelector('.block[data-model-index="' + idx + '"]');
+                                    }
+                                    if (block && keepTop == null && mainContainer
+                                        && block.getBoundingClientRect().bottom > mainContainer.getBoundingClientRect().bottom) {
+                                        block = null;
                                     }
                                 }
                                 if (!block) {
@@ -4924,18 +4902,24 @@
                     let caret = caretOverride
                         || (data && data.caret ? data.caret : this._caretOf(stateStr));
                     const exactCaret = !!(caret && caret.exact);
+                    const preCaret = (state.mode !== 'source' && caret && caret.mode === 'source'
+                        && data && typeof data.content === 'string')
+                        ? (this._convertCaretForMode(caret, data.content, 'wysiwyg') || caret)
+                        : caret;
                     // Where the edited paragraph sits on screen now, if it is on screen. The
                     // reload below loses the scroll position and _restoreCaret used to pin the
                     // paragraph 48 px from the top, so an undo of a change in plain view threw
                     // it to the top of the window (Ed, 2026-09-29). Put it back where it was.
-                    const anchorBi = (caret && caret.anchorIndex != null) ? (caret.anchorIndex | 0) : (caret ? (caret.blockIndex | 0) : 0);
-                    const va = (caret && caret.mode !== 'source') ? editViewAnchor([anchorBi]) : null;
+                    const anchorBi = (preCaret && preCaret.anchorIndex != null)
+                        ? (preCaret.anchorIndex | 0) : (preCaret ? (preCaret.blockIndex | 0) : 0);
+                    const va = (state.mode !== 'source' && preCaret && preCaret.mode !== 'source')
+                        ? editViewAnchor([anchorBi]) : null;
                     const keepTop = va ? va.top : null;
                     // The edited paragraph's text now, to find the change after (_caretAtChange).
                     let beforeText = null;
                     try {
-                        if (caret && caret.mode !== 'source' && editor) {
-                            const el0 = editor.querySelector('.block[data-model-index="' + (caret.blockIndex | 0) + '"]');
+                        if (state.mode !== 'source' && preCaret && preCaret.mode !== 'source' && editor) {
+                            const el0 = editor.querySelector('.block[data-model-index="' + (preCaret.blockIndex | 0) + '"]');
                             if (el0) beforeText = el0.textContent || '';
                         }
                     } catch (eBt) {}
@@ -4956,8 +4940,11 @@
                         if (state.mode === 'source') {
                             sourceEditor.value = data.content;
                             requestAnimationFrame(resizeSourceEditor);
+                            if (caret && caret.mode !== 'source' && exactCaret) {
+                                caret = this._convertCaretForMode(caret, data.content, 'source') || caret;
+                            }
                             // The caret at the end of what changed, as in Preview (_caretAtChange).
-                            if (!(exactCaret && caret.mode === 'source') && srcBefore != null) {
+                            if (!(exactCaret && caret && caret.mode === 'source') && srcBefore != null) {
                                 const now = String(sourceEditor.value || '');
                                 const max = Math.min(now.length, srcBefore.length);
                                 let s = 0;
@@ -4965,6 +4952,8 @@
                                 const off = now.length - s;
                                 caret = { mode: 'source', start: off, end: off };
                             }
+                        } else if (caret && caret.mode === 'source') {
+                            caret = this._convertCaretForMode(caret, data.content, 'wysiwyg') || caret;
                         }
                         // The branches above swap which element is visible and set
                         // state.mode, but that is only half a mode switch: the container's
@@ -4975,7 +4964,7 @@
                         // and completely unscrollable until the mode was toggled by hand.
                         try { syncPaginationClass(); } catch (eP) {}
                         try { applyEditorChromeForMode(); } catch (eC) {}
-                        settlePagesAfterReload((caret && caret.mode !== 'source') ? (caret.blockIndex | 0) : 0);
+                        settlePagesAfterReload((state.mode !== 'source' && caret) ? (caret.blockIndex | 0) : 0);
                     }
                     updateStatsNow();
                     updateOutline();
@@ -4986,13 +4975,14 @@
                     // Restore caret/block — never force first block (that was the jump-to-top bug)
                     if (caret) {
                         const self = this;
+                        const cFinal = caret;
                         // After loadMarkdownContent DOM is ready; rAF helps focus stick
                         requestAnimationFrame(function () {
-                            self._restoreCaret(caret, keepTop);
-                            if (!exactCaret) self._caretAtChange(caret.blockIndex, beforeText, dir);
+                            self._restoreCaret(cFinal, keepTop);
+                            if (!exactCaret) self._caretAtChange(cFinal.blockIndex, beforeText, dir);
                         });
-                        this._restoreCaret(caret, keepTop);
-                        if (!exactCaret) this._caretAtChange(caret.blockIndex, beforeText, dir);
+                        this._restoreCaret(cFinal, keepTop);
+                        if (!exactCaret) this._caretAtChange(cFinal.blockIndex, beforeText, dir);
                     } else if (state.mode !== 'source' && editor && editor.firstElementChild) {
                         currentActiveBlock = editor.firstElementChild;
                     }

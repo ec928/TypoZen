@@ -755,6 +755,15 @@
                 let start = range.start;
                 let end = range.end;
                 const full = sourceEditor.value || '';
+                const stampSrcInlineCaret = function (redoPos, undoPos, isEndOfBlock) {
+                    if (typeof HistoryManager !== 'undefined' && typeof HistoryManager.setTopCarets === 'function') {
+                        const rc = { mode: 'source', start: redoPos, end: redoPos, exact: true };
+                        const uc = { mode: 'source', start: undoPos, end: undoPos, exact: true };
+                        if (isEndOfBlock) { rc.endOfBlock = true; uc.endOfBlock = true; }
+                        HistoryManager.setTopCarets(rc, uc);
+                    }
+                    if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
+                };
 
                 if (start === end && type !== 'link') {
                     const markers = type === 'bold' ? '****' : type === 'italic' ? '**' : type === 'strike' ? '~~~~' : '``';
@@ -767,6 +776,7 @@
                     resizeSourceEditor();
                     updateStats();
                     HistoryManager.commitEdit();
+                    stampSrcInlineCaret(start + mid, start, false);
                     return true;
                 }
 
@@ -796,6 +806,7 @@
                     withSourceScrollPreserved(function () {});
                     updateStats();
                     HistoryManager.commitEdit();
+                    stampSrcInlineCaret(s + out.length, e, true);
                     return true;
                 }
 
@@ -808,11 +819,13 @@
                     const inner0 = full.slice(start, end) || 'Link Text';
                     const inner = (_pendingLink && _pendingLink.text) || inner0;
                     const lu = (_pendingLink && _pendingLink.url) || 'https://';
+                    const linkRep = '[' + inner + '](' + lu + ')';
                     HistoryManager.beginEdit();
-                    sourceSetRangeTextPreserveScroll('[' + inner + '](' + lu + ')', start, end, 'select');
+                    sourceSetRangeTextPreserveScroll(linkRep, start, end, 'select');
                     resizeSourceEditor();
                     updateStats();
                     HistoryManager.commitEdit();
+                    stampSrcInlineCaret(start + linkRep.length, end, false);
                     return true;
                 }
                 let inner = full.slice(start, end);
@@ -831,18 +844,21 @@
                     HistoryManager.beginEdit();
                     sourceSetRangeTextPreserveScroll(inner, start - 2, end + 2, 'select');
                     resizeSourceEditor(); updateStats(); HistoryManager.commitEdit();
+                    stampSrcInlineCaret((start - 2) + inner.length, end + 2, false);
                     return true;
                 } else if (type === 'strike' && start >= 2 && full.slice(start - 2, start) === '~~' && full.slice(end, end + 2) === '~~'
                     && inner.indexOf('~~') < 0) {
                     HistoryManager.beginEdit();
                     sourceSetRangeTextPreserveScroll(inner, start - 2, end + 2, 'select');
                     resizeSourceEditor(); updateStats(); HistoryManager.commitEdit();
+                    stampSrcInlineCaret((start - 2) + inner.length, end + 2, false);
                     return true;
                 } else if (type === 'code' && start >= 1 && full[start - 1] === '`' && full[end] === '`'
                     && inner.indexOf('`') < 0) {
                     HistoryManager.beginEdit();
                     sourceSetRangeTextPreserveScroll(inner, start - 1, end + 1, 'select');
                     resizeSourceEditor(); updateStats(); HistoryManager.commitEdit();
+                    stampSrcInlineCaret((start - 1) + inner.length, end + 1, false);
                     return true;
                 } else if (type === 'italic' && start >= 1 && full[start - 1] === '*' && full[end] === '*'
                     && (start < 2 || full[start - 2] !== '*') && full[end + 1] !== '*'
@@ -850,6 +866,7 @@
                     HistoryManager.beginEdit();
                     sourceSetRangeTextPreserveScroll(inner, start - 1, end + 1, 'select');
                     resizeSourceEditor(); updateStats(); HistoryManager.commitEdit();
+                    stampSrcInlineCaret((start - 1) + inner.length, end + 1, false);
                     return true;
                 } else if (type === 'bold' || type === 'italic' || type === 'strike') {
                     // Single-line partial: marks model on that hard line only
@@ -875,13 +892,24 @@
                         while (p < linePlainToRaw.length && linePlainToRaw[p] < rel) p++;
                         return p;
                     };
-                    const rawNext = applyInlineFormatToRaw(line, plainAt(start - lineStart), plainAt(end - lineStart), type, { refuseIfLossy: true });
+                    const pEnd = plainAt(end - lineStart);
+                    const rawNext = applyInlineFormatToRaw(line, plainAt(start - lineStart), pEnd, type, { refuseIfLossy: true });
                     if (rawNext != null) {
                         HistoryManager.beginEdit();
                         sourceSetRangeTextPreserveScroll(rawNext, lineStart, lineEnd, 'select');
                         resizeSourceEditor();
                         updateStats();
                         HistoryManager.commitEdit();
+                        const np = (rawNext.match(/^(?:#{1,6}\s+|>\s*|[ \t]*(?:[-*+]\s+(?:\[[ xX]\]\s?)?|\d+\.(?!\d)\s*))/) || [''])[0];
+                        let nextBody = rawNext.slice(np.length);
+                        if (np && /^#/.test(np)) {
+                            const cm2 = nextBody.match(/\s+#+\s*$/);
+                            if (cm2) nextBody = nextBody.slice(0, nextBody.length - cm2[0].length);
+                        }
+                        const nextP2r = plainRangeToRawOffsets(nextBody, 0, 0).plainToRaw || [];
+                        const rawInNext = pEnd < nextP2r.length ? nextP2r[pEnd] : nextBody.length;
+                        const redoOff = Math.min(lineStart + rawNext.length, lineStart + np.length + rawInNext);
+                        stampSrcInlineCaret(redoOff, end, false);
                         return true;
                     }
                     rep = open + inner + close;
@@ -895,6 +923,7 @@
                 resizeSourceEditor();
                 updateStats();
                 HistoryManager.commitEdit();
+                stampSrcInlineCaret(start + rep.length, end, false);
                 return true;
             }
 

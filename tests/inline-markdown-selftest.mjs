@@ -61,7 +61,7 @@ const names = [
     'plainRangeToRawOffsets', 'plainAndMarksFromMarkdown',
     'emitInlineMarkdownFromMarks', 'applyInlineFormatToRaw', 'applyMarksModelToBody', 'applyInlineFormatRest',
     'splitInlineFormatPrefix', 'stripListMarkerKeepBody', 'stripBlockPrefix', 'wholeLineInlineFormat',
-    'transformRawForFormat', 'markRangeInLine', 'inlineMarksForSelectedLines', 'splitRawForBlockFormat',
+    'transformRawForFormat', 'markRangeInLine', 'inlineMarksForSelectedLines',
     'boldAcrossLines', 'boldMarkersIn', 'withBoldAcross', 'splitLinkTitle', 'keptSourceAttr', 'blockDomToMarkdown', 'blockDomRebuild', 'applyEditToRaw', 'calloutTypeOfRaw',
     'parseTableMarkdown', 'splitTableRow', 'formatTableKeeping', 'formatTableMarkdown', 'tableAlignToSep'
 ];
@@ -420,20 +420,6 @@ console.log('--- link boundaries, raw emphasis fallback, block split, multi-line
     eq(api.applyInlineFormatToRaw('[link](https://x.com) **word**', 5, 9, 'italic'), '[link](https://x.com) ***word***', 'italic on bold word next to link keeps bold');
     eq(api.applyInlineFormatToRaw('[link](https://x.com) **word**', 5, 9, 'bold'), '[link](https://x.com) word', 'bold toggle off next to link unwraps **');
     eq(api.applyInlineFormatToRaw('`hello world` [u](https://x.com)', 6, 11, 'bold'), null, 'partial bold inside code span refused cleanly');
-
-    // splitRawForBlockFormat (partial-block H2 / Quote)
-    const sp1 = api.splitRawForBlockFormat('**Privacy-first** and free.', 0, 17, 'h2', {});
-    assert(JSON.stringify(sp1.pieces) === JSON.stringify(['## **Privacy-first** and', ' free.']),
-        'partial H2 from bold start includes opening ** (got ' + JSON.stringify(sp1.pieces) + ')');
-    const sp2 = api.splitRawForBlockFormat('Hello **world**', 6, 11, 'h2', {});
-    assert(JSON.stringify(sp2.pieces) === JSON.stringify(['Hello ', '## **world**']),
-        'partial H2 on trailing bold keeps ** together (got ' + JSON.stringify(sp2.pieces) + ')');
-    const sp3 = api.splitRawForBlockFormat('**hello world** and more', 6, 20, 'h2', {});
-    assert(JSON.stringify(sp3.pieces) === JSON.stringify(['**hello** ', '## **world** and more']),
-        'partial H2 mid-bold closes before and re-opens mid (got ' + JSON.stringify(sp3.pieces) + ')');
-    const sp4 = api.splitRawForBlockFormat('**a b c**', 2, 3, 'h2', {});
-    assert(JSON.stringify(sp4.pieces) === JSON.stringify(['**a** ', '## **b**', ' **c**']),
-        'partial H2 inside wider bold balances all three pieces (got ' + JSON.stringify(sp4.pieces) + ')');
 
     // inlineMarksForSelectedLines for partial & mixed multi-block code
     api.setMbFreeze({ fromIdx: 0, toIdx: 1, prefix: 'Intro ', suffix: ' tail' });

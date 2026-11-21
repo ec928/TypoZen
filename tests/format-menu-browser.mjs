@@ -443,6 +443,124 @@ try {
     await settleQuick();
     const srcCoR = await undoSnap();
     same('Source callout Redo places caret at end of body line (39)', srcCoR.start === 39 && srcCoR.end === 39, true);
+
+    // 1. Cross-mode Undo / Redo (Source <-> Preview)
+    await loadQuick(DOC_U, 'md', 'source');
+    await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(16, 16); applyFormatting('h2'); });
+    await settleQuick();
+    await page.evaluate(() => handleCommand('view_set:mode:wysiwyg'));
+    await settleQuick();
+    await page.evaluate(() => HistoryManager.undo());
+    await settleQuick();
+    const s2pU = await undoSnap();
+    const s2pEdActive = await page.evaluate(() => {
+        const ed = document.getElementById('editor');
+        return document.activeElement === ed || (ed && ed.contains(document.activeElement));
+    });
+    same('Source h2 -> Preview Undo focuses Preview editor (not hidden Source)', s2pEdActive, true);
+    checkEndCaret(s2pU, 1, 'Source h2 -> Preview Undo');
+    await page.evaluate(() => HistoryManager.redo());
+    await settleQuick();
+    checkEndCaret(await undoSnap(), 1, 'Source h2 -> Preview Redo');
+    await page.evaluate(() => HistoryManager.undo());
+    await settleQuick();
+    await page.keyboard.type('!');
+    await settleQuick();
+    same('Source h2 -> Preview Undo then typing appends at end', await saved(), 'First line\nSecond line here!\nThird line');
+
+    await loadQuick('Alpha beta', 'md', 'source');
+    await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(10, 10); });
+    await page.keyboard.type('XYZ');
+    await page.evaluate(() => HistoryManager.snapshot(true));
+    await settleQuick();
+    await page.evaluate(() => handleCommand('view_set:mode:wysiwyg'));
+    await settleQuick();
+    await page.evaluate(() => HistoryManager.undo());
+    await settleQuick();
+    const s2pTypeFocus = await page.evaluate(() => {
+        const ed = document.getElementById('editor');
+        return document.activeElement === ed || (ed && ed.contains(document.activeElement));
+    });
+    same('Source typing -> Preview Undo focuses Preview editor', s2pTypeFocus, true);
+    await page.keyboard.type('!');
+    await settleQuick();
+    same('Source typing -> Preview Undo then typing works in Preview', await saved(), 'Alpha beta!');
+
+    for (const [cmd, wantRedoStart] of [['h2', 30], ['callout:note', 39]]) {
+        await loadQuick(DOC_U, 'md', 'wysiwyg');
+        await focusAt(1, 5);
+        await page.evaluate((c) => { freezeFormatSelection(); applyFormatting(c); }, cmd);
+        await settleQuick();
+        await page.evaluate(() => handleCommand('view_set:mode:source'));
+        await settleQuick();
+        await page.evaluate(() => HistoryManager.undo());
+        await settleQuick();
+        const p2sU = await undoSnap();
+        same('Preview ' + cmd + ' -> Source Undo places caret at end of restored line (27)', p2sU.start === 27 && p2sU.end === 27, true);
+        await page.evaluate(() => HistoryManager.redo());
+        await settleQuick();
+        const p2sR = await undoSnap();
+        same('Preview ' + cmd + ' -> Source Redo places caret at end of formatted line (' + wantRedoStart + ')',
+            p2sR.start === wantRedoStart && p2sR.end === wantRedoStart, true);
+    }
+
+    // 2. Source inline bold Undo / Redo & Preview multi-block inline Undo / Redo
+    await loadQuick(DOC_U, 'md', 'source');
+    await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(18, 22); applyFormatting('bold'); });
+    await settleQuick();
+    same('Source inline bold doc matches', await saved(), 'First line\nSecond **line** here\nThird line');
+    await page.evaluate(() => HistoryManager.undo());
+    await settleQuick();
+    const srcBoldU = await undoSnap();
+    same('Source inline bold Undo places collapsed caret at end of original word (22)', srcBoldU.start === 22 && srcBoldU.end === 22, true);
+    await page.evaluate(() => HistoryManager.redo());
+    await settleQuick();
+    const srcBoldR = await undoSnap();
+    same('Source inline bold Redo places collapsed caret after closing ** (26)', srcBoldR.start === 26 && srcBoldR.end === 26, true);
+
+    await loadQuick('First line here\nSecond line tail', 'md', 'wysiwyg');
+    await page.evaluate(() => {
+        const b0 = document.querySelector('#editor .block[data-model-index="0"]');
+        const b1 = document.querySelector('#editor .block[data-model-index="1"]');
+        const t0 = document.createTreeWalker(b0, NodeFilter.SHOW_TEXT).nextNode();
+        const t1 = document.createTreeWalker(b1, NodeFilter.SHOW_TEXT).nextNode();
+        const r = document.createRange();
+        r.setStart(t0, 6);
+        r.setEnd(t1, 11);
+        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+        snapshotFormatSelectionFromEditor();
+        if (typeof snapshotMultiBlockSelectionFromLive === 'function') snapshotMultiBlockSelectionFromLive();
+        cacheInlineSelection();
+        freezeFormatSelection();
+        applyFormatting('bold');
+    });
+    await settleQuick();
+    same('Preview multi-block partial inline bold doc matches', await saved(), 'First **line here**\n**Second line** tail');
+    await page.evaluate(() => HistoryManager.undo());
+    await settleQuick();
+    const mbBoldU = await undoSnap();
+    same('Preview multi-block inline bold Undo places caret at span end on block 1 (11)',
+        mbBoldU.collapsed && mbBoldU.blkIdx === '1' && mbBoldU.off[0] === 11, true);
+    await page.evaluate(() => HistoryManager.redo());
+    await settleQuick();
+    const mbBoldR = await undoSnap();
+    same('Preview multi-block inline bold Redo places caret at span end on block 1 (11)',
+        mbBoldR.collapsed && mbBoldR.blkIdx === '1' && mbBoldR.off[0] === 11, true);
+
+    // 3. Shift+Enter block formatting keeps caret on the formatted line (not trailing line)
+    await loadQuick('FirstSecond', 'md', 'wysiwyg');
+    await focusAt(0, 5);
+    await page.keyboard.down('Shift'); await page.keyboard.press('Enter'); await page.keyboard.up('Shift');
+    await settleQuick();
+    await focusAt(0, 2);
+    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('h2'); });
+    await settleQuick();
+    same('Shift+Enter line 0 h2 formats only line 0', await saved(), '## First\nSecond');
+    checkEndCaret(await undoSnap(), 0, 'Shift+Enter line 0 h2 Format');
+    await page.evaluate(() => HistoryManager.undo());
+    await settleQuick();
+    same('Shift+Enter h2 Undo restores original block', await saved(), 'First\nSecond');
+    checkEndCaret(await undoSnap(), 0, 'Shift+Enter h2 Undo');
     await loadQuick('plain', 'md', 'wysiwyg');
 
     console.log('\n=== Alt underlines the menus\' access keys while held ===');
