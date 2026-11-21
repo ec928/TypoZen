@@ -580,8 +580,45 @@ async function main() {
             sourceEditor.setSelectionRange('## Heading two'.length, '## Heading two'.length);
             pasteLikeCtrlV(' and <b>bold</b>', ' and bold', false);
             const sWithPlain = sourceEditor.value;
+
+            loadMarkdownContent('One');
             handleCommand('view_set:mode:wysiwyg');
-            return { pWithPlain, pHtmlOnly, sWithPlain };
+            b = document.querySelector('#editor .block');
+            focusBlock(b, 3);
+            pasteLikeCtrlV('&nbsp;and <b>bold</b>', '\u00a0and bold', false);
+            const pNbspPlain = getMarkdownContent(false);
+
+            loadMarkdownContent('One');
+            b = document.querySelector('#editor .block');
+            focusBlock(b, 3);
+            pasteLikeCtrlV('&nbsp;and <b>bold</b>', '', false);
+            const pNbspHtmlOnly = getMarkdownContent(false);
+
+            loadMarkdownContent('## Heading two');
+            handleCommand('view_set:mode:source');
+            sourceEditor.focus();
+            sourceEditor.setSelectionRange('## Heading two'.length, '## Heading two'.length);
+            const dtSrc1 = new DataTransfer();
+            dtSrc1.setData('text/html', ' and <b>bold</b>');
+            dtSrc1.setData('text/plain', ' and bold');
+            const evSrc1 = new Event('paste', { bubbles: true, cancelable: true });
+            Object.defineProperty(evSrc1, 'clipboardData', { value: dtSrc1 });
+            sourceEditor.dispatchEvent(evSrc1);
+            const sCtrlVLead = sourceEditor.value;
+
+            loadMarkdownContent('Hello world');
+            sourceEditor.focus();
+            sourceEditor.setSelectionRange(6, 6);
+            const dtSrc2 = new DataTransfer();
+            dtSrc2.setData('text/html', '<b>big</b>  ');
+            dtSrc2.setData('text/plain', 'big  ');
+            const evSrc2 = new Event('paste', { bubbles: true, cancelable: true });
+            Object.defineProperty(evSrc2, 'clipboardData', { value: dtSrc2 });
+            sourceEditor.dispatchEvent(evSrc2);
+            const sCtrlVTrail = sourceEditor.value;
+
+            handleCommand('view_set:mode:wysiwyg');
+            return { pWithPlain, pHtmlOnly, sWithPlain, pNbspPlain, pNbspHtmlOnly, sCtrlVLead, sCtrlVTrail };
         });
         assert(richEdge.pWithPlain === '## Heading two and **bold**',
             'Preview rich-HTML paste keeps leading space (' + JSON.stringify(richEdge.pWithPlain) + ')');
@@ -589,6 +626,14 @@ async function main() {
             'Preview HTML-only paste keeps leading space (' + JSON.stringify(richEdge.pHtmlOnly) + ')');
         assert(richEdge.sWithPlain === '## Heading two and **bold**',
             'Source rich-HTML paste keeps leading space (' + JSON.stringify(richEdge.sWithPlain) + ')');
+        assert(richEdge.pNbspPlain === 'One and **bold**',
+            'Preview NBSP+plain paste keeps leading space (' + JSON.stringify(richEdge.pNbspPlain) + ')');
+        assert(richEdge.pNbspHtmlOnly === 'One and **bold**',
+            'Preview NBSP HTML-only paste keeps leading space (' + JSON.stringify(richEdge.pNbspHtmlOnly) + ')');
+        assert(richEdge.sCtrlVLead === '## Heading two and **bold**',
+            'Source Ctrl+V paste keeps leading space (' + JSON.stringify(richEdge.sCtrlVLead) + ')');
+        assert(richEdge.sCtrlVTrail === 'Hello **big**  world',
+            'Source Ctrl+V paste keeps trailing double space (' + JSON.stringify(richEdge.sCtrlVTrail) + ')');
 
         console.log('\npassed=' + passed + ' failed=' + failed);
         if (failed) { console.error('\nCLIPBOARD ROUND TRIP FAILED'); process.exitCode = 1; return; }

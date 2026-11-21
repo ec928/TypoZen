@@ -875,8 +875,8 @@
             const vis = el.textContent || '';
             off = Math.max(0, Math.min(off | 0, vis.length));
             endOff = endOff != null ? Math.max(off, Math.min(endOff | 0, vis.length)) : off;
-            const leadSp = (/^[ \t]+/.exec(pasted) || [''])[0];
-            const trailSp = (/[ \t]+$/.exec(pasted) || [''])[0];
+            const leadSp = (/^[ \t\u00a0]+/.exec(pasted) || [''])[0].replace(/\u00a0/g, ' ');
+            const trailSp = (/[ \t\u00a0]+$/.exec(pasted) || [''])[0].replace(/\u00a0/g, ' ');
             const p = make(pasted);
             const pNodes = unwrap(Array.from(p.childNodes));
             if (leadSp && !(p.textContent || '').startsWith(leadSp)) pNodes.unshift(document.createTextNode(leadSp));

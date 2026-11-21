@@ -2880,6 +2880,25 @@
             pasteLikeCtrlV(dt ? dt.getData('text/html') : '', dt ? dt.getData('text/plain') : '');
         });
 
+        function htmlToMarkdownForPaste(html, plain) {
+            let text = htmlToMarkdown(html);
+            if (!text || text.indexOf('\n') !== -1) return text;
+            const pStr = plain != null ? String(plain) : '';
+            if (pStr && !/[\r\n]/.test(pStr)) {
+                const lm = /^[ \t\u00a0]+/.exec(pStr);
+                const tm = /[ \t\u00a0]+$/.exec(pStr);
+                if (lm && !/^[ \t\u00a0]/.test(text)) text = lm[0].replace(/\u00a0/g, ' ') + text;
+                if (tm && !/[ \t\u00a0]$/.test(text)) text = text + tm[0].replace(/\u00a0/g, ' ');
+            } else if (!pStr) {
+                const sf = /<!--StartFragment-->([\s\S]*?)<!--EndFragment-->/i.exec(html);
+                const frag = (sf ? sf[1] : String(html).replace(/<\/?(?:html|body)[^>]*>/gi, ''))
+                    .replace(/&nbsp;|&#160;|&#x0*a0;/gi, ' ');
+                if (/^[ \t\u00a0]+/.test(frag) && !/^[ \t\u00a0]/.test(text)) text = ' ' + text;
+                if (/[ \t\u00a0]+$/.test(frag) && !/[ \t\u00a0]$/.test(text)) text = text + ' ';
+            }
+            return text;
+        }
+
         /**
          * Paste, as Ctrl+V does it: formatted text from a web page or Word becomes its
          * Markdown, anything else goes in as plain text. The paste event and the menus'
@@ -2916,22 +2935,8 @@
             let text = '';
             let fromHtml = false;
             if (!plainOnly && allowMarkdown && html && html.indexOf('data-source="typozen"') === -1) {
-                text = htmlToMarkdown(html);
+                text = htmlToMarkdownForPaste(html, plain);
                 fromHtml = !!text;
-                if (fromHtml && text.indexOf('\n') === -1) {
-                    const pStr = plain != null ? String(plain) : '';
-                    if (pStr && !/[\r\n]/.test(pStr)) {
-                        const lm = /^[ \t]+/.exec(pStr);
-                        const tm = /[ \t]+$/.exec(pStr);
-                        if (lm && !/^[ \t]/.test(text)) text = lm[0] + text;
-                        if (tm && !/[ \t]$/.test(text)) text = text + tm[0];
-                    } else if (!pStr) {
-                        const sf = /<!--StartFragment-->([\s\S]*?)<!--EndFragment-->/i.exec(html);
-                        const frag = sf ? sf[1] : String(html).replace(/<\/?(?:html|body)[^>]*>/gi, '');
-                        if (/^[ \t]+/.test(frag) && !/^[ \t]/.test(text)) text = ' ' + text;
-                        if (/[ \t]+$/.test(frag) && !/[ \t]$/.test(text)) text = text + ' ';
-                    }
-                }
             }
             if (!text) text = plain || '';
             if (!text) return;

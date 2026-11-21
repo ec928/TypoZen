@@ -514,9 +514,11 @@
                 // (marked data-source="typozen") and fall through.
                 try {
                     const html = dt ? dt.getData('text/html') : '';
-                    if (html && html.indexOf('data-source="typozen"') === -1
-                        && typeof htmlToMarkdown === 'function') {
-                        const md = htmlToMarkdown(html);
+                    const plain = dt ? dt.getData('text/plain') : '';
+                    const allowMd = typeof takesMarkdownFormatting !== 'function' || takesMarkdownFormatting();
+                    if (allowMd && html && html.indexOf('data-source="typozen"') === -1
+                        && typeof htmlToMarkdownForPaste === 'function') {
+                        const md = htmlToMarkdownForPaste(html, plain);
                         if (md) {
                             e.preventDefault();
                             insertPastedPlainText(md, true);
