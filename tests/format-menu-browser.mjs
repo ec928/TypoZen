@@ -1,13 +1,15 @@
 /**
- * The page's half of the Format menu work (2026-11-21):
- *   - a right-click in a Markdown document asks the host for TypoZen's menu (format_menu:
- *     with the caret line's type) instead of the browser's, and does not also raise the
- *     selection popup; in a code file the browser's menu stays
+ * The page's half of "right-click is where you change text" (Ed, 2026-11-21):
+ *   - a right-click in an editable document asks the host for TypoZen's menu
+ *     (format_menu: with the caret line's type) instead of the browser's, and does not
+ *     also raise the selection popup; a code file asks for it too, with md: false
+ *     (clipboard items only)
+ *   - the Menu key sends where the caret is ("at"), so the menu opens there; a mouse
+ *     right-click does not (the menu opens at the pointer)
  *   - Ctrl+1..6 make headings, the same key again makes normal text, Ctrl+Alt+2 does not
- *   - the selection popup: Highlight sits with the reading tools; Bold and the other
- *     formats are hidden in a code file
- * The host's half (the WPF menu itself, its ticks, Alt+O, the host key filter) is not
- * reachable from here.
+ *   - the selection popup holds reading tools only: no Bold, no More
+ * The host's half (the WPF menu, its items and ticks, placing it, the host key filter)
+ * is not reachable from here.
  *
  *   node tests/format-menu-browser.mjs
  */
@@ -59,14 +61,15 @@ try {
         await new Promise(r => setTimeout(r, 120));   // the popup is raised 10 ms after mouseup
     };
 
-    console.log('\n=== right-click in Markdown: TypoZen\'s menu, not the browser\'s ===');
+    console.log("\n=== right-click in Markdown: TypoZen's menu, not the browser's ===");
     await load('## Heading\n> [!TIP]\n> Tip body\nPlain');
     let b = await lineBox(2);
     await page.mouse.click(b.x + 20, b.y + b.height / 2, { button: 'right' });
     await settled(page);
     let msgs = await menuMsgs();
-    same('one format_menu: request, with the line\'s type', JSON.stringify(msgs), JSON.stringify(['format_menu:{"block":"quote","callout":"tip"}']));
-    same('the browser\'s own menu is cancelled', await page.evaluate(() => window.__ctxDefault), false);
+    same("one format_menu: request, with the line's type and no caret point", JSON.stringify(msgs),
+        JSON.stringify(['format_menu:{"block":"quote","callout":"tip","md":true}']));
+    same("the browser's own menu is cancelled", await page.evaluate(() => window.__ctxDefault), false);
     // Right-click on a selection: the menu, and no popup over it.
     b = await lineBox(3);
     await dragSelect(b);
@@ -77,14 +80,42 @@ try {
     same('right-click on a selection does not raise the popup', await popShown(), false);
     same('and asks for the menu', (await menuMsgs()).length, 1);
 
-    console.log('\n=== a code file keeps the browser\'s menu ===');
+    console.log('\n=== the Menu key: the menu opens at the caret ===');
+    await load('First line\nSecond line here');
+    b = await lineBox(1);
+    await page.mouse.click(b.x + 30, b.y + b.height / 2);
+    await new Promise(r => setTimeout(r, 1100));   // well past the last right mousedown
+    await page.evaluate(() => { window.__sent = []; });
+    await page.keyboard.press('ContextMenu');
+    await settled(page);
+    msgs = await menuMsgs();
+    if (!msgs.length) {
+        // Headless Chromium may not turn the key into a contextmenu event. Raise the event
+        // the key raises, with no right mousedown before it.
+        await page.evaluate(() => {
+            const el = document.querySelector('#editor .block[data-model-index="1"]');
+            el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 0 }));
+        });
+        msgs = await menuMsgs();
+        console.log('  ..   the ContextMenu key raised no event headless; dispatched the event instead');
+    }
+    const kb = msgs.length ? JSON.parse(msgs[0].slice('format_menu:'.length)) : {};
+    const caret = await page.evaluate(() => {
+        const r = getSelection().getRangeAt(0).cloneRange(); r.collapse(false);
+        const q = r.getClientRects()[0] || r.getBoundingClientRect();
+        return [Math.round(q.left * devicePixelRatio), Math.round(q.bottom * devicePixelRatio)];
+    });
+    same("it carries the caret's point", JSON.stringify(kb.at), JSON.stringify(caret));
+    same('premise: the caret is not at the top left', caret[0] > 0 && caret[1] > 0, true);
+
+    console.log("\n=== a code file: TypoZen's menu, clipboard only ===");
     await load('int x = 1;', 'cs', 'source');
     const cm = await page.$('#source-cm .cm-content');
     b = await cm.boundingBox();
     await page.mouse.click(b.x + 10, b.y + 8, { button: 'right' });
     await settled(page);
-    same('no format_menu: request in a .cs file', (await menuMsgs()).length, 0);
-    same('the browser\'s menu is left alone', await page.evaluate(() => window.__ctxDefault), true);
+    same('a .cs file asks for the menu with md: false', JSON.stringify(await menuMsgs()), JSON.stringify(['format_menu:{"md":false}']));
+    same("and the browser's menu is cancelled", await page.evaluate(() => window.__ctxDefault), false);
 
     console.log('\n=== Ctrl+1..6 ===');
     await load('Title line\nSecond');
@@ -106,20 +137,27 @@ try {
     await settled(page);
     same('Ctrl+Alt+2 (AltGr) changes nothing', await saved(), 'Title line\nSecond');
 
-    console.log('\n=== the selection popup ===');
+    console.log('\n=== the selection popup: reading tools only ===');
     await load('Some words here');
     b = await lineBox(0);
     await dragSelect(b);
     same('premise: the popup is up', await popShown(), true);
     const pop = await page.evaluate(() => {
-        const mark = document.getElementById('selPopMark');
-        return { inRow: !!(mark && !mark.closest('#selPopOverflow')), bold: !document.getElementById('selPopBold').hidden };
+        const shown = (id) => {
+            const e = document.getElementById(id);
+            if (!e || e.hidden) return false;
+            const r = e.getBoundingClientRect();
+            return r.width > 0 && r.height > 0;
+        };
+        return {
+            reading: ['selPopFind', 'selPopRead', 'selPopReadFromHere', 'selPopMark', 'selPopSearchWeb'].filter(shown),
+            formatting: ['selPopBold', 'selPopItalic', 'selPopStrike', 'selPopCode', 'selPopLink', 'selPopMore', 'selPopOverflow']
+                .filter(id => document.getElementById(id))
+        };
     });
-    same('Highlight is on the icon row, not in More', pop.inRow, true);
-    same('Bold is offered in Markdown', pop.bold, true);
-    await load('int value = 1;', 'cs', 'source');
-    await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(4, 9); showSelPop({ left: 100, top: 100, width: 0, height: 0, bottom: 100 }); });
-    same('Bold is hidden in a code file', await page.evaluate(() => document.getElementById('selPopBold').hidden), true);
+    same('the popup shows the reading tools, Search web among them', pop.reading.join(','),
+        'selPopFind,selPopRead,selPopReadFromHere,selPopMark,selPopSearchWeb');
+    same('and no formatting and no More', pop.formatting.join(','), '');
 } finally {
     await browser.close();
     clearTimeout(deadline);

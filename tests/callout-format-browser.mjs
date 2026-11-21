@@ -120,7 +120,7 @@ try {
 
     console.log('\n=== the ticks: what the line at the caret is ===');
     await load('> [!TIP]\n> Body\n## H\n- l\nplain');
-    const st = async (i) => { await clickLine(i); return page.evaluate(() => tzFormatState()); };
+    const st = async (i) => { await clickLine(i); return page.evaluate(() => JSON.stringify(formatStateAtCaret())); };
     same('callout body', await st(1), '{"block":"quote","callout":"tip"}');
     same('heading', await st(2), '{"block":"h2","callout":null}');
     same('list', await st(3), '{"block":"list","callout":null}');

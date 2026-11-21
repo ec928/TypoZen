@@ -232,7 +232,9 @@
 
     <!-- Document Find & Replace (editor/source only) -->
     <!-- Selecting text raises this beside the selection: the gesture every reader uses,
-         and the thing that makes highlighting discoverable without the sidebar open. -->
+         and the thing that makes highlighting discoverable without the sidebar open.
+         Reading tools only, the same in a book and a document: changing the text is the
+         right-click menu's job (Ed, 2026-11-21). -->
     <div id="selPop" hidden role="dialog" aria-label="Selected text">
         <div class="selpop-actions" style="display: flex; flex-direction: column; padding: 0;">
             <!-- Primary Row (Icons Only) -->
@@ -244,17 +246,11 @@
                 <!-- A reading tool, not formatting: it saves the selection to your Marks and
                      changes nothing in the file, and it is what a book offers too. -->
                 <button type="button" id="selPopMark" class="selpop-btn selpop-icon-btn" title="Highlight: save to your Marks, not into the file (Ctrl+Shift+M)"><span class="tz-glyph" aria-hidden="true"><span class="mark-rib"></span></span></button>
-                <button type="button" id="selPopMore" class="selpop-btn selpop-icon-btn" title="More"><span class="tz-glyph" aria-hidden="true">&#xE712;</span></button>
+                <button type="button" id="selPopSearchWeb" class="selpop-btn selpop-icon-btn" title="Search the web for this selection"><span class="tz-glyph" aria-hidden="true">&#xE774;</span></button>
             </div>
         </div>
         <style>
-            #selPopOverflow {
-                border-top: 1px solid var(--border, #3F3F46);
-            }
-            #selPop.pop-above #selPopOverflow {
-                border-top: none;
-                border-bottom: 1px solid var(--border, #3F3F46);
-            }
+            /* The rule between groups on the table's icon bar below. */
             .selpop-divider {
                 height: 1px;
                 background-color: var(--border, #3F3F46);
@@ -262,16 +258,6 @@
                 border: none;
             }
         </style>
-        <!-- Overflow Menu (Icons + Text) -->
-        <div id="selPopOverflow" class="selpop-actions" style="display: none; flex-direction: column; gap: 2px; padding: 4px;">
-            <button type="button" id="selPopBold" class="selpop-btn" title="Bold (Ctrl+B)"><span class="tz-glyph" aria-hidden="true">&#xE8DD;</span> Bold</button>
-            <button type="button" id="selPopItalic" class="selpop-btn" title="Italic (Ctrl+I)"><span class="tz-glyph" aria-hidden="true">&#xE8DB;</span> Italic</button>
-            <button type="button" id="selPopStrike" class="selpop-btn" title="Strikethrough (Ctrl+Shift+X)"><span class="tz-glyph tz-glyph-text" aria-hidden="true">S</span> Strikethrough</button>
-            <button type="button" id="selPopCode" class="selpop-btn" title="Inline code"><span class="tz-glyph" aria-hidden="true">&#xE943;</span> Code</button>
-            <button type="button" id="selPopLink" class="selpop-btn" title="Turn selection into a hyperlink (Ctrl+K)"><span class="tz-glyph" aria-hidden="true">&#xE71B;</span> Add link</button>
-            <hr id="selPopDivFormat" class="selpop-divider">
-            <button type="button" id="selPopSearchWeb" class="selpop-btn" title="Search the web for this selection"><span class="tz-glyph" aria-hidden="true">&#xE774;</span> Search web</button>
-        </div>
         <div id="selPopSpell" class="selpop-actions selpop-spell" hidden></div>
         <div id="selPopBody" class="selpop-body" hidden></div>
     </div>
@@ -398,14 +384,16 @@
                     <h3>Markdown</h3>
                     <table class="tz-help-table">
                         <tbody>
+                            <tr><td colspan="2" class="tz-help-note"><strong>Right-click</strong> the text for every formatting command, or type the Markdown below.</td></tr>
                             <tr><td><code># Heading</code> … <code>######</code></td><td>Headings 1–6 · <kbd>Ctrl+1</kbd>…<kbd>Ctrl+6</kbd></td></tr>
                             <tr><td><code>**bold**</code> · <code>*italic*</code></td><td><kbd>Ctrl+B</kbd> · <kbd>Ctrl+I</kbd></td></tr>
                             <tr><td><code>~~strike~~</code></td><td><kbd>Ctrl+Shift+X</kbd></td></tr>
                             <tr><td><code>`inline`</code> · fenced <code>```lang</code></td><td>Code</td></tr>
                             <tr><td><code>&gt; quote</code></td><td>Blockquote</td></tr>
-                            <tr><td><code>&gt; [!NOTE]</code> then <code>&gt; text</code></td><td>Callout: NOTE, TIP, IMPORTANT, WARNING, CAUTION · Format › Callout</td></tr>
+                            <tr><td><code>&gt; [!NOTE]</code> then <code>&gt; text</code></td><td>Callout: NOTE, TIP, IMPORTANT, WARNING, CAUTION</td></tr>
                             <tr><td><code>-</code> · <code>1.</code> · <code>- [ ]</code></td><td>Bullet · numbered · task</td></tr>
                             <tr><td><code>[text](url)</code></td><td><kbd>Ctrl+K</kbd></td></tr>
+                            <tr><td>Table</td><td><kbd>Ctrl+T</kbd></td></tr>
                             <tr><td>List indent / outdent</td><td><kbd>Tab</kbd> · <kbd>Shift+Tab</kbd></td></tr>
                         </tbody>
                     </table>

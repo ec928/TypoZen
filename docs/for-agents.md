@@ -244,13 +244,23 @@ runs, never at launch, on a lookup or while reading. `Extensions.cs` owns all of
 - Claims about the network in README, About and the Store listing must keep saying "unless
   you install an extension". `docs/releasing.md` section 7 applies to these too
 
-## Formatting commands (one list, three places)
+## Formatting: one home (Ed, 2026-11-21)
 
-- **The Format menu (`menuFormat`, `Alt+O`) is the list.** Right-click in an editable Markdown or text document opens a copy of it built from the real items each time (`ShowFormatMenuAtCursor`, like the Read Aloud pointer menu), under Cut, Copy, Paste and Select All. The toolbar's dropdowns are separate XAML items with the same names in the same order: keep them in step. Every item sends a `fmt:` message; `applyFormatting` (04-lists.js) is the one place they land.
-- **The page decides who owns a right-click** (`formatMenuOwnsRightClick`): an editable Markdown/text document in Preview or Source posts `format_menu:` and cancels the browser's menu; a book, a PDF, Reader and code files keep the browser's. A right-click it owns does not also raise the selection popup.
-- **Ticks** come from `tzFormatState()` -- the caret line's type and callout -- asked for as a menu opens (`RefreshFormatTicks`) or sent with `format_menu:`. Nothing is computed per caret move.
-- **No Markdown formatting on code or data files.** The host greys the controls by `CodeExtensions` (`MarkdownFormatControls`); the page refuses by `NO_MARKDOWN_EXTS`, the same list, so a shortcut refuses exactly where a menu is grey. Change both together.
-- **Callouts:** the rules are written above `calloutPlan` in 04-lists.js (Ed approved them 2026-11-21) and checked by `callout-format-browser`. The edit reloads through `reloadAfterFormatEdit`, the same safe path as multi-line formats, as one undo step.
+Each surface has one job, and a command lives where its job puts it. Do not add a second mouse route to a formatting command.
+
+| Surface | Job | Holds |
+|---|---|---|
+| **Right-click** (editable document) | Change the text | Cut, Copy, Paste, Select All; in Markdown/text also Bold, Italic, Strikethrough, Inline Code, Link; Normal Text, Heading 1-6, Quote, Callout, the three lists; Insert Table. Shortcuts shown, the caret's line ticked |
+| **Selection popup** (drag) | About the words, never changes them | Look up, Find, Read, Read from here, Highlight, Search web -- the same in a book and a document |
+| **Command row** | How you read and view | Read Aloud, Mode, Columns, Scroll/Pages -- no format buttons |
+| **Menu bar** | The file and the app | No Format menu |
+
+- **The right-click menu is defined once, in the host** (`ShowFormatMenuAtCursor`), built fresh each time from the state the page sends with `format_menu:` -- `{"block","callout","md","at"}`. Every item sends a `fmt:` message; `applyFormatting` (04-lists.js) is where they all land.
+- **The page decides who owns a right-click** (`formatMenuOwnsRightClick`): any editable document in Preview or Source posts `format_menu:` and cancels the browser's menu (`md: false` in a code file: clipboard items only). Books, PDFs, Reader and the native tabs keep the browser's menu. A right-click it owns does not also raise the selection popup.
+- **The Menu key / Shift+F10** carry `"at"`: the caret in device pixels of the editor view (`caretPointForMenu`), which the host turns into a screen point. A right mousedown in the last second means the pointer.
+- **No Markdown formatting on code or data files.** The page refuses by `NO_MARKDOWN_EXTS`, which is the host's `CodeExtensions`: change both together.
+- **Callouts:** the rules are written above `calloutPlan` in 04-lists.js (approved 2026-11-21) and checked by `callout-format-browser`. The edit reloads through `reloadAfterFormatEdit`, the same safe path as multi-line formats, as one undo step. Typing in a callout header with no title extends the shown name ("Tip" + "s" = title "Tips"): pinned by `callout-edit-browser`, by design.
+- **Enter in a quote or callout** carries `> ` on and an empty `> ` line ends it, as with lists (`quoteContinuation`, 05-model.js; Source in 03-shell.js). Checked by `quote-enter-browser`.
 - **Ctrl+1..6** are in the host key filter and in page JS, like Ctrl+B; never with Alt (Ctrl+Alt is AltGr).
 
 ## Explicit non-goals (unless the user reopens them)

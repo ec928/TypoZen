@@ -3010,7 +3010,7 @@
            putting the sentence there laid it out one glyph per line, innerText
            captured it on tab switch, and the user's document became that string. */
         #editor-wrapper.scratch-empty::after {
-            content: "Start typing. F1 shows formatting shortcuts and Markdown syntax.";
+            content: "Start typing. Right-click to format; F1 shows the shortcuts and Markdown syntax.";
             position: absolute;
             left: 16px;
             top: 8px;

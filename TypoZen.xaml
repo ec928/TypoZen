@@ -416,43 +416,6 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <!-- H / list dropdowns: same hit box + subtle hover as GhostToolbarButton -->
-        <ControlTemplate x:Key="ToolMenuHeaderTemplate" TargetType="MenuItem">
-            <Border x:Name="templateRoot" Background="Transparent" BorderBrush="Transparent" BorderThickness="1"
-                    CornerRadius="4" Padding="6,2" MinHeight="26" MinWidth="28" SnapsToDevicePixels="True">
-                <Grid>
-                    <ContentPresenter x:Name="headerPresenter" ContentSource="Header"
-                                      HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
-                    <Popup x:Name="PART_Popup" IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
-                           Placement="Bottom" Focusable="False" AllowsTransparency="True" PopupAnimation="Fade">
-                        <Border Background="{DynamicResource TzPopupBgBrush}"
-                                BorderBrush="{DynamicResource TzHairlineBorderBrush}"
-                                BorderThickness="1" CornerRadius="8" Padding="4" Margin="0,4,8,8" SnapsToDevicePixels="True">
-                            <Border.Effect>
-                                <DropShadowEffect BlurRadius="14" Opacity="0.35" ShadowDepth="4" Color="#000000"/>
-                            </Border.Effect>
-                            <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle" KeyboardNavigation.TabNavigation="Cycle"/>
-                        </Border>
-                    </Popup>
-                </Grid>
-            </Border>
-            <ControlTemplate.Triggers>
-                <Trigger Property="IsHighlighted" Value="True">
-                    <Setter TargetName="templateRoot" Property="Background" Value="{DynamicResource TzAccentHoverBrush}"/>
-                </Trigger>
-                <Trigger Property="IsSubmenuOpen" Value="True">
-                    <Setter TargetName="templateRoot" Property="Background" Value="{DynamicResource TzAccentPressedBrush}"/>
-                </Trigger>
-            </ControlTemplate.Triggers>
-        </ControlTemplate>
-        <Style x:Key="ToolbarMenuItem" TargetType="MenuItem">
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.MenuTextBrushKey}}"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Template" Value="{StaticResource ToolMenuHeaderTemplate}"/>
-        </Style>
         <Style TargetType="ComboBox">
             <Setter Property="Padding" Value="6,4"/>
             <Setter Property="FontSize" Value="12"/>
@@ -472,7 +435,7 @@
         <!--
           Notepad-style chrome (Option B):
             tabBar — title-bar band: document tabs + custom min/max/close
-            topToolbar — command row: File/Edit/… + format icons + Sidebar / Preview
+            topToolbar — command row: File/Edit/… + Read Aloud, Mode, Columns, Scroll
           WindowChrome is applied from C#. Empty title space must NOT be hit-testable in
           chrome so the window can be dragged; only tabs and caption buttons opt in.
         -->
@@ -666,39 +629,6 @@
                             <MenuItem x:Name="mMarksPane" Header="Show Book_marks" InputGestureText="Ctrl+Shift+P"/>
                             <MenuItem x:Name="mReturnJump" Header="_Return from Jump" InputGestureText="Ctrl+Shift+J"/>
                         </MenuItem>
-                        <!-- Format: the one list of formatting commands. Right-click in a Markdown
-                             document opens a copy of it (ShowFormatMenuAtCursor), and the toolbar's
-                             dropdowns use the same names in the same order. -->
-                        <MenuItem x:Name="menuFormat" Header="F_ormat">
-                            <MenuItem x:Name="mFmtBold" Header="_Bold" InputGestureText="Ctrl+B"/>
-                            <MenuItem x:Name="mFmtItalic" Header="_Italic" InputGestureText="Ctrl+I"/>
-                            <MenuItem x:Name="mStrike" Header="_Strikethrough" InputGestureText="Ctrl+Shift+X"/>
-                            <MenuItem x:Name="mFmtCode" Header="Inline _Code"/>
-                            <MenuItem x:Name="mInsertLink" Header="_Link..." InputGestureText="Ctrl+K"/>
-                            <Separator/>
-                            <MenuItem x:Name="mFmtPara" Header="_Normal Text"/>
-                            <MenuItem x:Name="mFmtHeading" Header="_Heading">
-                                <MenuItem x:Name="mFmtH1" Header="Heading _1" InputGestureText="Ctrl+1"/>
-                                <MenuItem x:Name="mFmtH2" Header="Heading _2" InputGestureText="Ctrl+2"/>
-                                <MenuItem x:Name="mFmtH3" Header="Heading _3" InputGestureText="Ctrl+3"/>
-                                <MenuItem x:Name="mFmtH4" Header="Heading _4" InputGestureText="Ctrl+4"/>
-                                <MenuItem x:Name="mFmtH5" Header="Heading _5" InputGestureText="Ctrl+5"/>
-                                <MenuItem x:Name="mFmtH6" Header="Heading _6" InputGestureText="Ctrl+6"/>
-                            </MenuItem>
-                            <MenuItem x:Name="mFmtQuote" Header="_Quote"/>
-                            <MenuItem x:Name="mFmtCallout" Header="C_allout">
-                                <MenuItem x:Name="mFmtCalloutNote" Header="_Note"/>
-                                <MenuItem x:Name="mFmtCalloutTip" Header="_Tip"/>
-                                <MenuItem x:Name="mFmtCalloutImportant" Header="_Important"/>
-                                <MenuItem x:Name="mFmtCalloutWarning" Header="_Warning"/>
-                                <MenuItem x:Name="mFmtCalloutCaution" Header="_Caution"/>
-                            </MenuItem>
-                            <MenuItem x:Name="mFmtList" Header="B_ulleted List"/>
-                            <MenuItem x:Name="mFmtOl" Header="Nu_mbered List"/>
-                            <MenuItem x:Name="mFmtTask" Header="Tas_k List"/>
-                            <Separator/>
-                            <MenuItem x:Name="mInsertTable" Header="Insert _Table..." InputGestureText="Ctrl+T"/>
-                        </MenuItem>
                         <MenuItem Header="_View">
                             <MenuItem x:Name="menuSidebarGroup" Header="_Sidebar (Alt+\)">
                                 <MenuItem x:Name="mSidebarOutline" Header="_Outline"/>
@@ -783,68 +713,8 @@
                     </Menu>
                 </StackPanel>
 
-                <!-- Format tools: Fluent Ghost buttons + hairline divider -->
-               <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <!-- Inline Formatting moved to context popover -->
-
-                    <!-- Block -->
-                    <Menu x:Name="headingMenu" Background="Transparent" Padding="0" Margin="0,0,2,0" VerticalAlignment="Center">
-                        <MenuItem x:Name="miHeadings" Style="{StaticResource ToolbarMenuItem}" ToolTip="Headings (H1-H6)">
-                            <MenuItem.Header>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="H" FontFamily="Segoe UI Variable Text, Segoe UI" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"/>
-                                    <TextBlock Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="8" Margin="4,1,0,0" VerticalAlignment="Center" Opacity="0.65"/>
-                                </StackPanel>
-                            </MenuItem.Header>
-                            <MenuItem x:Name="btnHPara" Header="_Normal Text"/>
-                            <Separator/>
-                            <MenuItem x:Name="btnH1" Header="Heading _1"/>
-                            <MenuItem x:Name="btnH2" Header="Heading _2"/>
-                            <MenuItem x:Name="btnH3" Header="Heading _3"/>
-                            <MenuItem x:Name="btnH4" Header="Heading _4"/>
-                            <MenuItem x:Name="btnH5" Header="Heading _5"/>
-                            <MenuItem x:Name="btnH6" Header="Heading _6"/>
-                        </MenuItem>
-                    </Menu>
-                    <Button x:Name="btnQuote" Style="{StaticResource GhostToolbarButton}" Content="&#x201C;"
-                            FontFamily="Georgia, 'Times New Roman', serif" FontSize="15" FontWeight="SemiBold"
-                            Margin="0,0,2,0" ToolTip="Quote"/>
-                    <Menu x:Name="calloutMenu" Background="Transparent" Padding="0" Margin="0,0,2,0" VerticalAlignment="Center">
-                        <MenuItem x:Name="miCallouts" Style="{StaticResource ToolbarMenuItem}" ToolTip="Callout: Note, Tip, Important, Warning, Caution">
-                            <MenuItem.Header>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE946;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
-                                    <TextBlock Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="8" Margin="4,1,0,0" VerticalAlignment="Center" Opacity="0.65"/>
-                                </StackPanel>
-                            </MenuItem.Header>
-                            <MenuItem x:Name="btnCalloutNote" Header="_Note" FontFamily="Segoe UI Variable Text, Segoe UI"/>
-                            <MenuItem x:Name="btnCalloutTip" Header="_Tip" FontFamily="Segoe UI Variable Text, Segoe UI"/>
-                            <MenuItem x:Name="btnCalloutImportant" Header="_Important" FontFamily="Segoe UI Variable Text, Segoe UI"/>
-                            <MenuItem x:Name="btnCalloutWarning" Header="_Warning" FontFamily="Segoe UI Variable Text, Segoe UI"/>
-                            <MenuItem x:Name="btnCalloutCaution" Header="_Caution" FontFamily="Segoe UI Variable Text, Segoe UI"/>
-                        </MenuItem>
-                    </Menu>
-                    <Menu x:Name="listMenu" Background="Transparent" Padding="0" Margin="0" VerticalAlignment="Center">
-                        <MenuItem x:Name="miLists" Style="{StaticResource ToolbarMenuItem}" ToolTip="Lists">
-                            <MenuItem.Header>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE8FD;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
-                                    <TextBlock Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="8" Margin="4,1,0,0" VerticalAlignment="Center" Opacity="0.65"/>
-                                </StackPanel>
-                            </MenuItem.Header>
-                            <MenuItem x:Name="btnList" Header="_Bulleted List" FontFamily="Segoe UI Variable Text, Segoe UI"/>
-                            <MenuItem x:Name="btnOrderedList" Header="_Numbered List" FontFamily="Segoe UI Variable Text, Segoe UI"/>
-                            <MenuItem x:Name="btnChecklist" Header="_Task List" FontFamily="Segoe UI Variable Text, Segoe UI"/>
-                        </MenuItem>
-                    </Menu>
-
-                    <Border Style="{StaticResource ToolbarDivider}"/>
-
-                    <!-- Inserts -->
-                    <Button x:Name="btnTable" Style="{StaticResource GhostToolbarButton}" 
-                            Content="&#xE80A;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13"
-                            Margin="0" ToolTip="Insert Table"/>
-                </StackPanel>
+                <!-- No formatting on the command row (Ed, 2026-11-21): formatting is on the
+                     right-click menu, where the text is. This row is for how you read and view. -->
 
                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
                     <!-- One control: the speaker, Read Aloud, and Stop while reading. The other

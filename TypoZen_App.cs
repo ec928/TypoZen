@@ -1716,9 +1716,6 @@ namespace TypoZen
             BindClick("mMarkToggle", (s, e) => SendMsg("cmd:mark_toggle"));
             BindClick("mMarksPane", (s, e) => SendMsg("cmd:show_marks"));
             BindClick("mReturnJump", (s, e) => SendMsg("cmd:return_jump"));
-            BindClick("mInsertLink", (s, e) => SendMsg("fmt:link"));
-            BindClick("mInsertTable", (s, e) => SendMsg("fmt:table"));
-            BindClick("mStrike", (s, e) => SendMsg("fmt:strike"));
             BindClick("btnReadAloud", (s, e) => SendMsg("cmd:read_aloud_doc"));
             ShowReadAloudState(false);
 
@@ -1843,46 +1840,8 @@ namespace TypoZen
             // About is an in-page themed panel (same shell as F1 help), not a system MessageBox.
             BindClick("mAbout", (s, e) => ShowHelpPanel("cmd:help_about"));
 
-            // Formatting buttons
-            BindClick("btnH1", (s, e) => SendMsg("fmt:h1"));
-            BindClick("btnH2", (s, e) => SendMsg("fmt:h2"));
-            BindClick("btnH3", (s, e) => SendMsg("fmt:h3"));
-            BindClick("btnH4", (s, e) => SendMsg("fmt:h4"));
-            BindClick("btnH5", (s, e) => SendMsg("fmt:h5"));
-            BindClick("btnH6", (s, e) => SendMsg("fmt:h6"));
-            BindClick("btnQuote", (s, e) => SendMsg("fmt:quote"));
-            BindClick("btnList", (s, e) => SendMsg("fmt:list"));
-            BindClick("btnOrderedList", (s, e) => SendMsg("fmt:ol"));
-            BindClick("btnChecklist", (s, e) => SendMsg("fmt:checklist"));
-            BindClick("btnTable", (s, e) => SendMsg("fmt:table"));
-            BindClick("btnHPara", (s, e) => SendMsg("fmt:para"));
-            foreach (string k in CalloutKinds)
-            {
-                string kind = k;
-                BindClick("btnCallout" + kind, (s, e) => SendMsg("fmt:callout:" + kind.ToLowerInvariant()));
-                BindClick("mFmtCallout" + kind, (s, e) => SendMsg("fmt:callout:" + kind.ToLowerInvariant()));
-            }
-            // Format menu (Edit's Link, Table and Strikethrough moved here, bound above).
-            BindClick("mFmtBold", (s, e) => SendMsg("fmt:bold"));
-            BindClick("mFmtItalic", (s, e) => SendMsg("fmt:italic"));
-            BindClick("mFmtCode", (s, e) => SendMsg("fmt:code"));
-            BindClick("mFmtPara", (s, e) => SendMsg("fmt:para"));
-            for (int h = 1; h <= 6; h++)
-            {
-                string level = "h" + h;
-                BindClick("mFmtH" + h, (s, e) => SendMsg("fmt:" + level));
-            }
-            BindClick("mFmtQuote", (s, e) => SendMsg("fmt:quote"));
-            BindClick("mFmtList", (s, e) => SendMsg("fmt:list"));
-            BindClick("mFmtOl", (s, e) => SendMsg("fmt:ol"));
-            BindClick("mFmtTask", (s, e) => SendMsg("fmt:checklist"));
-            // Ticks on the line at the caret, asked for as each menu opens.
-            foreach (string menuName in new[] { "menuFormat", "miHeadings", "miLists", "miCallouts" })
-            {
-                var fm = FindElement(menuName) as MenuItem;
-                if (fm == null) continue;
-                fm.SubmenuOpened += (s, e) => { if (e.OriginalSource == fm) RefreshFormatTicks(); };
-            }
+            // Formatting has no buttons or menu-bar menu: it is on the right-click menu
+            // (ShowFormatMenuAtCursor) and the shortcuts (Ed, 2026-11-21).
 
             BindClick("btnToggleSidebar", (s, e) => SendMsg("cmd:toggle_sidebar"));
 
@@ -10404,30 +10363,6 @@ namespace TypoZen
                     toolbar.Background = chromeElevated;
                     toolbar.BorderBrush = hairlineBorderBrush;
                 }
-                // Format dropdowns sit on the command bar
-                foreach (string menuName in new string[] { "headingMenu", "listMenu", "tableMenu" })
-                {
-                    var tbMenu = FindElement(menuName) as Menu;
-                    if (tbMenu == null) continue;
-                    tbMenu.Background = Brushes.Transparent;
-                    tbMenu.Foreground = txBrush;
-                    foreach (object item in tbMenu.Items)
-                    {
-                        var mi = item as MenuItem;
-                        if (mi == null) continue;
-                        mi.ClearValue(MenuItem.ForegroundProperty);
-                        mi.ClearValue(MenuItem.BackgroundProperty);
-                        foreach (object sub in mi.Items)
-                        {
-                            var subMi = sub as MenuItem;
-                            if (subMi != null)
-                            {
-                                subMi.ClearValue(MenuItem.ForegroundProperty);
-                                subMi.ClearValue(MenuItem.BackgroundProperty);
-                            }
-                        }
-                    }
-                }
                 var statusBar = FindElement("statusBar") as Border;
                 if (statusBar != null)
                 {
@@ -10859,7 +10794,7 @@ namespace TypoZen
                 if (_chromeWatchMenus == null)
                 {
                     var found = new List<Menu>(4);
-                    foreach (string name in new[] { "topMenu", "headingMenu", "listMenu", "tableMenu" })
+                    foreach (string name in new[] { "topMenu" })
                     {
                         var m = FindElement(name) as Menu;
                         if (m != null) found.Add(m);
@@ -11131,7 +11066,7 @@ namespace TypoZen
 
         private void HookChromeMenuFocusReturn()
         {
-            foreach (string name in new[] { "topMenu", "headingMenu", "listMenu", "tableMenu" })
+            foreach (string name in new[] { "topMenu" })
             {
                 var menu = FindElement(name) as Menu;
                 if (menu == null) continue;
@@ -11500,44 +11435,28 @@ namespace TypoZen
             RefreshEditingAvailability();
         }
 
-        // The format controls, and the Edit items that duplicate three of them. Menus are
-        // Controls too, so the three dropdowns lock the same way the buttons do.
-        // "tableMenu" was listed here and exists nowhere -- the toolbar's table button is
-        // btnTable -- so FindElement returned null, the loop skipped it, and Insert Table
-        // stayed bright on every book. The Edit items that change the document (Undo, Redo,
-        // Cut, Paste) lock with them; Copy, Select All, Find, Go to
-        // Page and the bookmark items read the document and stay.
+        // The Edit items that change the document (Undo, Redo, Cut, Paste) lock when it
+        // cannot take an edit; Copy, Select All, Find, Go to Page and the bookmark items read
+        // the document and stay. There are no format controls on the window any more:
+        // formatting is on the right-click menu, which the page offers only where an edit
+        // can land (Ed, 2026-11-21).
         private static readonly string[] FormatControls =
         {
-            "headingMenu", "btnQuote", "calloutMenu", "listMenu",
-            "btnTable",
-            "menuFormat",
             "mUndo", "mRedo", "mCut", "mPaste",
-        };
-
-        // The Markdown formatting among them: greyed on a code file as well, where the
-        // document takes edits but "## " or "> [!NOTE]" would only corrupt it.
-        private static readonly string[] MarkdownFormatControls =
-        {
-            "headingMenu", "btnQuote", "calloutMenu", "listMenu", "btnTable", "menuFormat",
         };
 
         private static readonly string[] CalloutKinds = { "Note", "Tip", "Important", "Warning", "Caution" };
         private readonly Dictionary<string, object> _formatTips = new Dictionary<string, object>();
 
         /// <summary>
-        /// Grey the formatting controls whenever the document cannot take an edit.
+        /// Grey the Edit items that change the document (FormatControls) whenever the
+        /// document cannot take an edit.
         ///
-        /// They were live-looking and inert in Reader and on every epub: nine toolbar
-        /// controls plus three Edit items that do nothing, with no way to tell from
-        /// looking. Word Wrap already greys itself and says why (RefreshWordWrapMenu-
-        /// Availability); this is the same courtesy for the rest, using the same
-        /// SetControlLocked the Column and Scroll buttons use, so "unavailable" has one
-        /// appearance across the whole toolbar.
-        ///
-        /// Greyed rather than hidden, deliberately. Collapsing them would reflow the
-        /// centre group, so switching modes would shuffle buttons under the pointer and
-        /// the reader would lose track of what the app can do at all.
+        /// They were live-looking and inert in Reader and on every epub, with no way to
+        /// tell from looking. Word Wrap already greys itself and says why (RefreshWordWrap-
+        /// MenuAvailability); this is the same courtesy, using the same SetControlLocked
+        /// the Column and Scroll buttons use, so "unavailable" has one appearance.
+        /// (The format buttons this once also greyed were removed on 2026-11-21.)
         /// </summary>
         private void RefreshFormatAvailability()
         {
@@ -11560,18 +11479,6 @@ namespace TypoZen
                     if (!_formatTips.ContainsKey(name)) _formatTips[name] = c.ToolTip;
                     SetControlLocked(c, !editable);
                     c.ToolTip = editable ? _formatTips[name] : why;
-                }
-                // A code file takes edits, but not Markdown formatting (the page refuses it
-                // too: applyFormatting, isCodeDocument).
-                if (editable && IsCodePath(_currentFilePath))
-                {
-                    foreach (string name in MarkdownFormatControls)
-                    {
-                        var c = FindElement(name) as Control;
-                        if (c == null) continue;
-                        SetControlLocked(c, true);
-                        c.ToolTip = "Formatting is for Markdown and text documents, not code";
-                    }
                 }
                 // On a PDF, Undo and Redo are the annotation editor's (10-pdf.js).
                 if (ActiveIsPdf())
@@ -12034,16 +11941,29 @@ namespace TypoZen
         }
 
         /// <summary>
-        /// Right-click in a Markdown document: Cut, Copy, Paste, Select All, then a copy of
-        /// the Format menu, ticked for the line at the caret. Built from the real items each
-        /// time, like the Read Aloud menu, so it cannot drift from them. The page asks for it
-        /// (format_menu:) only where formatting applies; elsewhere the browser's menu stays.
+        /// The right-click menu in an editable document: the one place formatting lives (Ed,
+        /// 2026-11-21 -- no Format menu, no format buttons). Cut, Copy, Paste, Select All;
+        /// then, in a Markdown or text document, the text styles, the line's type (ticked for
+        /// the line at the caret), callouts and Insert Table. A code file gets the clipboard
+        /// items only. The page asks for it (format_menu:, 04-lists.js) with the line's state:
+        /// {"block":"h2","callout":"tip","md":true,"at":[x,y]}. "at" is there when the Menu
+        /// key opened it: the caret, in device pixels of the editor view; otherwise the menu
+        /// opens at the pointer.
         /// </summary>
         private void ShowFormatMenuAtCursor(string state)
         {
-            var fmt = FindElement("menuFormat") as MenuItem;
-            if (fmt == null || !fmt.IsEnabled) return;
-            ApplyFormatTicks(state);
+            if (_nativeSurfaceVisible || !IsDocumentEditable()) return;
+            string s = state ?? "";
+            var rx = new Func<string, string>(key =>
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(s, "\"" + key + @"""\s*:\s*""(\w+)""");
+                return m.Success ? m.Groups[1].Value : "";
+            });
+            string block = rx("block");
+            string callout = rx("callout");
+            bool inCallout = callout.Length > 0;
+            bool md = !System.Text.RegularExpressions.Regex.IsMatch(s, @"""md""\s*:\s*false");
+
             var cm = NewPointerMenu();
             foreach (string name in new[] { "mCut", "mCopy", "mPaste", "mSelectAll" })
             {
@@ -12051,66 +11971,53 @@ namespace TypoZen
                 if (one == null) continue;
                 var m = new MenuItem { Header = one.Header, IsEnabled = one.IsEnabled, InputGestureText = one.InputGestureText };
                 var orig = one;
-                m.Click += (s, e) => orig.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, orig));
+                m.Click += (o, e) => orig.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, orig));
                 cm.Items.Add(m);
             }
-            cm.Items.Add(new Separator());
-            MirrorMenuItems(fmt, cm.Items);
-            OpenAtCursor(cm);
+            if (md)
+            {
+                cm.Items.Add(new Separator());
+                FormatItem(cm.Items, "_Bold", "Ctrl+B", "fmt:bold", false);
+                FormatItem(cm.Items, "_Italic", "Ctrl+I", "fmt:italic", false);
+                FormatItem(cm.Items, "_Strikethrough", "Ctrl+Shift+X", "fmt:strike", false);
+                FormatItem(cm.Items, "Inline Co_de", null, "fmt:code", false);
+                FormatItem(cm.Items, "_Link...", "Ctrl+K", "fmt:link", false);
+                cm.Items.Add(new Separator());
+                FormatItem(cm.Items, "_Normal Text", null, "fmt:para", block == "para" && !inCallout);
+                var heading = new MenuItem { Header = "_Heading", IsChecked = block.Length == 2 && block[0] == 'h' };
+                for (int h = 1; h <= 6; h++)
+                    FormatItem(heading.Items, "Heading _" + h, "Ctrl+" + h, "fmt:h" + h, block == "h" + h);
+                cm.Items.Add(heading);
+                FormatItem(cm.Items, "_Quote", null, "fmt:quote", block == "quote" && !inCallout);
+                var co = new MenuItem { Header = "Call_out", IsChecked = inCallout };
+                foreach (string k in CalloutKinds)
+                    FormatItem(co.Items, "_" + k, null, "fmt:callout:" + k.ToLowerInvariant(),
+                        string.Equals(callout, k, StringComparison.OrdinalIgnoreCase));
+                cm.Items.Add(co);
+                FormatItem(cm.Items, "B_ulleted List", null, "fmt:list", block == "list");
+                FormatItem(cm.Items, "Nu_mbered List", null, "fmt:ol", block == "ol");
+                FormatItem(cm.Items, "Tas_k List", null, "fmt:checklist", block == "checklist");
+                cm.Items.Add(new Separator());
+                FormatItem(cm.Items, "Insert Tabl_e...", "Ctrl+T", "fmt:table", false);
+            }
+
+            var at = System.Text.RegularExpressions.Regex.Match(s, @"""at""\s*:\s*\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]");
+            if (at.Success && _webView != null)
+            {
+                // The Menu key: at the caret, which the pointer may be nowhere near.
+                var p = _webView.PointToScreen(new System.Drawing.Point(
+                    int.Parse(at.Groups[1].Value), int.Parse(at.Groups[2].Value)));
+                OpenAtScreenPoint(cm, p);
+            }
+            else OpenAtCursor(cm);
         }
 
-        /// <summary>Ask the page what the caret's line is, then tick the format menus.</summary>
-        private async void RefreshFormatTicks()
+        private void FormatItem(ItemCollection into, string header, string gesture, string msg, bool on)
         {
-            try
-            {
-                if (_webView == null || _webView.CoreWebView2 == null) return;
-                string res = await _webView.CoreWebView2.ExecuteScriptAsync(
-                    "typeof tzFormatState === 'function' ? tzFormatState() : ''");
-                ApplyFormatTicks(res);
-            }
-            catch { }
-        }
-
-        /// <summary>
-        /// Tick the line's type in the Format menu and the toolbar's dropdowns, from
-        /// {"block":"h2","callout":"tip"} (raw, or as ExecuteScriptAsync quotes it).
-        /// </summary>
-        private void ApplyFormatTicks(string state)
-        {
-            string s = state ?? "";
-            var bm = System.Text.RegularExpressions.Regex.Match(s, "block\\\\?\"\\s*:\\s*\\\\?\"(\\w+)");
-            var cmm = System.Text.RegularExpressions.Regex.Match(s, "callout\\\\?\"\\s*:\\s*\\\\?\"(\\w+)");
-            string block = bm.Success ? bm.Groups[1].Value : "";
-            string callout = cmm.Success ? cmm.Groups[1].Value : "";
-            Action<string, bool> tick = (name, on) =>
-            {
-                var mi = FindElement(name) as MenuItem;
-                if (mi != null) mi.IsChecked = on;
-            };
-            bool inCallout = callout.Length > 0;
-            tick("mFmtPara", block == "para" && !inCallout);
-            tick("btnHPara", block == "para" && !inCallout);
-            for (int h = 1; h <= 6; h++)
-            {
-                tick("mFmtH" + h, block == "h" + h);
-                tick("btnH" + h, block == "h" + h);
-            }
-            tick("mFmtHeading", block.Length == 2 && block[0] == 'h');
-            tick("mFmtQuote", block == "quote" && !inCallout);
-            tick("mFmtCallout", inCallout);
-            foreach (string k in CalloutKinds)
-            {
-                bool on = string.Equals(callout, k, StringComparison.OrdinalIgnoreCase);
-                tick("mFmtCallout" + k, on);
-                tick("btnCallout" + k, on);
-            }
-            tick("mFmtList", block == "list");
-            tick("btnList", block == "list");
-            tick("mFmtOl", block == "ol");
-            tick("btnOrderedList", block == "ol");
-            tick("mFmtTask", block == "checklist");
-            tick("btnChecklist", block == "checklist");
+            var m = new MenuItem { Header = header, IsChecked = on };
+            if (!string.IsNullOrEmpty(gesture)) m.InputGestureText = gesture;
+            m.Click += (o, e) => SendMsg(msg);
+            into.Add(m);
         }
 
         /// <summary>A context menu in the theme, framed like the main menu's submenus.</summary>
@@ -12135,8 +12042,14 @@ namespace TypoZen
         private void OpenAtCursor(ContextMenu cm)
         {
             // The click happened in the WebView, which WPF's mouse does not follow: place it
-            // from the real cursor, in device-independent units.
-            var pt = WinForms.Cursor.Position;
+            // from the real cursor.
+            OpenAtScreenPoint(cm, WinForms.Cursor.Position);
+        }
+
+        /// <summary>Open a context menu at a point in screen device pixels.</summary>
+        private void OpenAtScreenPoint(ContextMenu cm, System.Drawing.Point pt)
+        {
+            // WPF places in device-independent units.
             double sx = 1, sy = 1;
             var ps = PresentationSource.FromVisual(this);
             if (ps != null && ps.CompositionTarget != null)
@@ -18905,8 +18818,8 @@ namespace TypoZen
                 : "Not available for " + NativeRoleLabel(role) + " — this tab is not a document.";
             // Dim explicitly as well as disabling.
             //
-            // The top-level menus use ToolbarMenuItem -> ToolMenuHeaderTemplate, a custom
-            // ControlTemplate with no disabled state, so IsEnabled=false stopped them
+            // The top-level menus use a custom ControlTemplate with no disabled state,
+            // so IsEnabled=false stopped them
             // opening and left them looking exactly as bright as File and Themes. Reported
             // as "they still show up very visibly even if they cannot be accessed".
             // Opacity is template-independent, which is the point.

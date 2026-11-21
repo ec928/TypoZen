@@ -1,18 +1,15 @@
 /**
- * A control that cannot act does not look like one that can.
+ * The window's controls tell the truth about what can be done.
  *
- * Reader sets #editor to contenteditable="false", for a book and for Markdown alike, so
- * Bold, Italic, Strikethrough, Code, Headings, Quote, Lists, Link and Table are all
- * no-ops there -- and every one of them stayed at full strength, indistinguishable from
- * a toolbar that works. Word Wrap had greyed itself and said why for a long time; the
- * nine controls beside it had not.
+ * Since 2026-11-21 formatting has no buttons on the window: it is on the right-click menu
+ * (Ed: no format toolbar, no Format menu). This suite used to check that the toolbar's
+ * format controls greyed in Reader and on a book; those controls are gone, so it now
+ * checks that they stay gone -- with a control that UI Automation does see the toolbar --
+ * and keeps its other claims: the status bar, no caught fault, and Source/Preview locked
+ * on a PDF.
  *
- * Asserted through UI Automation rather than the page, because the claim is about the
+ * Asserted through UI Automation rather than the page, because the claims are about the
  * WPF chrome: IsEnabled is what a screen reader reports and what a click obeys.
- *
- * Both directions, in one run. "They are greyed in Reader" is only worth something next
- * to "they are live in Preview" -- a toolbar that is always dead would pass half of this
- * suite, which is exactly the shape of test that has fooled this project before.
  *
  *   RUN_APP_E2E=1 node tests/format-availability-app.mjs
  */
@@ -35,66 +32,21 @@ function shell(command, arg) {
     return JSON.parse(execFileSync('powershell', args, { encoding: 'utf8' }).trim());
 }
 
-// By AutomationId (x:Name in the XAML), not by label: these buttons carry private-use
-// MDL2 glyphs as their content, so their accessible name is a character that means
-// nothing on its own. The three dropdowns are Menus in the XAML and the header MenuItem
-// inside each is what UI Automation surfaces -- WPF propagates IsEnabled down, so
-// locking the Menu is visible on its item.
-// Bold, Italic, Strikethrough, Code, Link and Table left the toolbar in 0.3.11, for the
-// selection popup (hidden there on a book or PDF: source-popover-app, pdf-reader-features-app).
-// These three are what the toolbar still has.
-const FORMAT = ['miHeadings', 'btnQuote', 'miLists'];
-
-/** Report each formatting control's enabled state, plus what could not be found. */
-function formatState() {
-    const all = shell('controls').controls;
-    const seen = [], missing = [];
-    for (const id of FORMAT) {
-        const hit = all.find(c => c.id === id);
-        if (hit) seen.push({ label: id, enabled: hit.enabled });
-        else missing.push(id);
-    }
-    return { seen, missing, total: all.length };
-}
+// By AutomationId (x:Name in the XAML). These were the toolbar's format controls until
+// 2026-11-21; none of them may come back.
+const GONE = ['miHeadings', 'btnQuote', 'miCallouts', 'miLists', 'btnTable'];
 
 const app = await launchApp({ file: 'tests/large-scroll-mixed.md', settleMs: 7000, visible: true });
 try {
-    // --- Control: on an editable Markdown document every one of them is live.
     console.log('\n=== Markdown, Preview ===');
     await app.eval(() => handleCommand('view_set:mode:preview'));
     await sleep(2000);
-    let st = formatState();
-    info('found ' + st.seen.length + ' of ' + FORMAT.length + ' format controls among ' +
-        st.total + ' toolbar controls' + (st.missing.length ? '; missing ' + st.missing.join(', ') : ''));
-    assert(st.missing.length === 0,
-        'control: every formatting control is present in the shell');
-    assert(st.seen.length > 0 && st.seen.every(c => c.enabled),
-        'control: all of them are live on an editable document' +
-        ' (' + st.seen.filter(c => !c.enabled).map(c => c.label).join(', ') + ')');
-
-    // --- Reader on the same Markdown: read-only, so they must go quiet.
-    console.log('\n=== Markdown, Reader ===');
-    await app.eval(() => handleCommand('view_set:mode:reader'));
-    await sleep(2500);
-    const editable = await app.eval(() =>
-        document.getElementById('editor').isContentEditable);
-    info('editor.isContentEditable = ' + editable);
-    assert(editable === false, 'control: Reader really did make the document read-only');
-
-    st = formatState();
-    const live = st.seen.filter(c => c.enabled).map(c => c.label);
-    info('still live: ' + (live.length ? live.join(', ') : 'none'));
-    assert(st.seen.length === FORMAT.length && live.length === 0,
-        'every formatting control is greyed in Reader');
-
-    // --- And back: greying must be a state, not a one-way door.
-    console.log('\n=== back to Preview ===');
-    await app.eval(() => handleCommand('view_set:mode:preview'));
-    await sleep(2500);
-    st = formatState();
-    const dead = st.seen.filter(c => !c.enabled).map(c => c.label);
-    info('still greyed: ' + (dead.length ? dead.join(', ') : 'none'));
-    assert(dead.length === 0, 'and they all come back when the document can take an edit');
+    const all = shell('controls').controls;
+    info(all.length + ' toolbar controls');
+    assert(all.some(c => c.id === 'btnModeReader') && all.some(c => c.id === 'btnReadAloud'),
+        'control: UI Automation sees the command row (Mode and Read Aloud)');
+    const back = GONE.filter(id => all.some(c => c.id === id));
+    assert(back.length === 0, 'no formatting controls on the window' + (back.length ? ' (found ' + back.join(', ') + ')' : ''));
 
     // --- The status bar no longer carries a version number nobody asked for.
     // (The reported list also picks up virtualized outline rows whose UI Automation
@@ -115,23 +67,6 @@ try {
     assert(faults.length === 0, 'no fault was caught along the way' + (faults.length ? ' (' + faults.length + ')' : ''));
 } finally {
     await app.close();
-}
-
-// --- A book, which is read-only whatever the mode says. Separate launch: opening one
-//     over a Markdown tab is a different code path and this is about the resting state.
-console.log('\n=== an epub ===');
-const book = await launchApp({ file: 'tests/Matter - Iain M. Banks.epub', settleMs: 12000, visible: true });
-try {
-    const kind = await book.eval(() =>
-        (typeof DocumentModel !== 'undefined') ? DocumentModel.kind : '?');
-    assert(kind === 'epub', 'control: the book opened');
-    const st = formatState();
-    const live = st.seen.filter(c => c.enabled).map(c => c.label);
-    info('still live: ' + (live.length ? live.join(', ') : 'none'));
-    assert(st.missing.length === 0 && live.length === 0,
-        'every formatting control is greyed on a book');
-} finally {
-    await book.close();
 }
 
 // --- A PDF: one mode, reading it. Source and Preview were live on a PDF (it moved into the

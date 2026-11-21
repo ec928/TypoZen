@@ -3334,7 +3334,6 @@
             if (ext && NO_MARKDOWN_EXTS.indexOf(ext) >= 0) return false;
             return !(typeof isCodeDocument === 'function' && isCodeDocument());
         }
-        window.tzTakesMarkdownFormatting = takesMarkdownFormatting;
 
         function applyFormatting(type) {
             // Markdown formatting has no meaning in a code file: H2 on a C# line wrote "## "
@@ -3840,7 +3839,7 @@
         }
 
         /**
-         * What the line at the caret is, for the ticks in the Format menus:
+         * What the line at the caret is, for the ticks on the right-click menu:
          * { block: 'para'|'h1'..'h6'|'quote'|'list'|'ol'|'checklist', callout: kind|null }.
          */
         function formatStateAtCaret() {
@@ -3882,28 +3881,51 @@
             } catch (e) {}
             return st;
         }
-        window.tzFormatState = function () { return JSON.stringify(formatStateAtCaret()); };
 
         /**
-         * Right-click in an editable Markdown document opens TypoZen's menu -- Cut, Copy,
-         * Paste, Select All and the Format menu (ShowFormatMenuAtCursor in the host) --
-         * instead of the browser's. Books, PDFs, Reader, code files and the native tabs keep
-         * the menu they had.
+         * Right-click in an editable document opens TypoZen's menu (ShowFormatMenuAtCursor in
+         * the host) instead of the browser's: Cut, Copy, Paste, Select All, and in Markdown
+         * or text the formatting -- its one home (Ed, 2026-11-21: no Format menu, no format
+         * buttons). A code file gets the clipboard items only ("md": false). Books, PDFs,
+         * Reader and the native tabs keep the menu they had.
          */
         function formatMenuOwnsRightClick(target) {
             if (window.tzPdfActive || window.tzPdfEditing) return false;
             if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub') return false;
-            if (!takesMarkdownFormatting()) return false;
             if (!target || !target.closest || !editor) return false;
             if (state.mode === 'source') return typeof isSourceNode === 'function' && isSourceNode(target);
             return editor.isContentEditable && editor.contains(target);
         }
         window.tzFormatMenuOwnsRightClick = formatMenuOwnsRightClick;
+
+        // A right-click is a right mousedown just before the contextmenu event; anything
+        // else (the Menu key, Shift+F10) opens the menu at the caret, not at the pointer.
+        let _rightDownAt = 0;
+        document.addEventListener('mousedown', function (e) { if (e.button === 2) _rightDownAt = Date.now(); }, true);
+
+        /** The caret (or the end of the selection), in device pixels of the view. */
+        function caretPointForMenu() {
+            try {
+                const sel = window.getSelection();
+                if (!sel || !sel.rangeCount) return null;
+                const r = sel.getRangeAt(0).cloneRange();
+                r.collapse(false);
+                let rect = r.getClientRects()[0] || r.getBoundingClientRect();
+                if ((!rect || (!rect.width && !rect.height && !rect.left && !rect.top)) && sel.focusNode) {
+                    const el = sel.focusNode.nodeType === 1 ? sel.focusNode : sel.focusNode.parentElement;
+                    if (el) rect = el.getBoundingClientRect();
+                }
+                if (!rect) return null;
+                const dpr = window.devicePixelRatio || 1;
+                return [Math.round(rect.left * dpr), Math.round(rect.bottom * dpr)];
+            } catch (e) { return null; }
+        }
+
         document.addEventListener('contextmenu', function (e) {
             if (!formatMenuOwnsRightClick(e.target)) return;
             e.preventDefault();
             // The menu takes focus from the page, so the selection is frozen now, as a
-            // toolbar click freezes it. The Menu key gives no mousedown to unfreeze first.
+            // toolbar click froze it. The Menu key gives no mousedown to unfreeze first.
             try {
                 if (state.mode !== 'source') {
                     _formatSelectionFrozen = false;
@@ -3911,7 +3933,14 @@
                 }
             } catch (eSnap) {}
             try { if (typeof hideSelPop === 'function') hideSelPop(); } catch (eH) {}
-            postMsg('format_menu:' + JSON.stringify(formatStateAtCaret()));
+            const md = takesMarkdownFormatting();
+            const st = md ? formatStateAtCaret() : {};
+            st.md = md;
+            if (Date.now() - _rightDownAt > 1000) {
+                const at = caretPointForMenu();
+                if (at) st.at = at;
+            }
+            postMsg('format_menu:' + JSON.stringify(st));
         });
 
         /** Plain offsets for the current (or cached) selection inside a block. */

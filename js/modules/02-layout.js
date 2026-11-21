@@ -2105,10 +2105,6 @@
                 if (b) b.hidden = true; 
                 const lookupBtn = document.getElementById('selPopLookup');
                 if (lookupBtn) lookupBtn.classList.remove('active');
-                const moreBtn = document.getElementById('selPopMore');
-                if (moreBtn) moreBtn.classList.remove('active');
-                const overflow = document.getElementById('selPopOverflow');
-                if (overflow) overflow.style.display = 'none';
             }
         }
 
@@ -2446,17 +2442,6 @@
             if (lookup) lookup.hidden = !_selPopWord;
             try { fillSpellSuggestions(_selPopWord); } catch (eSp) {}
             
-            // Formatting and Links are bugs in a read-only book or PDF, hide them -- and in a
-            // code file, where Markdown would only corrupt the code.
-            const isEpub = (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub')
-                || !!window.tzPdfActive
-                || (typeof window.tzTakesMarkdownFormatting === 'function' && !window.tzTakesMarkdownFormatting());
-            const editBtns = ['selPopBold', 'selPopItalic', 'selPopStrike', 'selPopCode', 'selPopLink', 'selPopDivFormat'];
-            editBtns.forEach(id => {
-                const btn = document.getElementById(id);
-                if (btn) btn.hidden = isEpub;
-            });
-
             // Hide any group that has all its buttons hidden
             const groups = pop.querySelectorAll('.selpop-group');
             groups.forEach(group => {
@@ -2698,14 +2683,6 @@
             const lookupBtn = document.getElementById('selPopLookup');
             if (lookupBtn) lookupBtn.classList.add('active');
             
-            // Mutually exclusive: close overflow if open
-            const overflow = document.getElementById('selPopOverflow');
-            const moreBtn = document.getElementById('selPopMore');
-            if (overflow && overflow.style.display === 'flex') {
-                overflow.style.display = 'none';
-                if (moreBtn) moreBtn.classList.remove('active');
-            }
-            
             showSelPopKeepPosition();
         }
 
@@ -2797,28 +2774,6 @@
                     try { handleCommand('show_marks'); } catch (e2) {}
                 }
             });
-            const linkBtn = document.getElementById('selPopLink');
-            if (linkBtn) linkBtn.addEventListener('click', function () {
-                openLinkModal(null);
-            });
-
-            // New inline formatting tools in popover overflow
-            function bindPopFormat(id, fmt) {
-                const b = document.getElementById(id);
-                if (!b) return;
-                b.addEventListener('mousedown', function (e) {
-                    e.preventDefault(); // keep selection active
-                });
-                b.addEventListener('click', function () {
-                    hideSelPop();
-                    if (typeof applyFormatting === 'function') applyFormatting(fmt);
-                });
-            }
-            bindPopFormat('selPopBold', 'bold');
-            bindPopFormat('selPopItalic', 'italic');
-            bindPopFormat('selPopStrike', 'strike');
-            bindPopFormat('selPopCode', 'code');
-
             const searchWebBtn = document.getElementById('selPopSearchWeb');
             if (searchWebBtn) {
                 searchWebBtn.addEventListener('mousedown', function (e) { e.preventDefault(); });
@@ -2842,29 +2797,6 @@
                 }
                 try { postMsg('define:' + _selPopWord); } catch (e) {}
             });
-
-            const moreBtn = document.getElementById('selPopMore');
-            const overflow = document.getElementById('selPopOverflow');
-            if (moreBtn && overflow) {
-                moreBtn.addEventListener('mousedown', function (e) { e.preventDefault(); });
-                moreBtn.addEventListener('click', function () {
-                    if (overflow.style.display === 'flex') {
-                        overflow.style.display = 'none';
-                        moreBtn.classList.remove('active');
-                    } else {
-                        overflow.style.display = 'flex';
-                        moreBtn.classList.add('active');
-                        // Mutually exclusive: close dictionary if open
-                        const body = document.getElementById('selPopBody');
-                        if (body && !body.hidden) {
-                            body.hidden = true;
-                            const lookupBtn = document.getElementById('selPopLookup');
-                            if (lookupBtn) lookupBtn.classList.remove('active');
-                        }
-                    }
-                    showSelPopKeepPosition();
-                });
-            }
 
             const find = document.getElementById('selPopFind');
             if (find) find.addEventListener('click', function () {

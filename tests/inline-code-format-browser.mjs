@@ -81,17 +81,17 @@ try {
         await sleep(120);
     };
 
-    // 1. Real README.md line 8 repro via popover #selPopMore -> #selPopCode + full selection preserved + toggle off
+    // 1. Real README.md line 8 repro via the right-click menu's Inline Code (the host sends
+    //    fmt:code; until 2026-11-21 this was the popover's More -> Code) + full selection
+    //    preserved + toggle off
     const README_P = '**Privacy-first and completely free.** There are no accounts, no sign-ins, and no tracking or telemetry; it just opens straight into your document. TypoZen goes online only for things you turn on yourself: downloading an extension, or Smart Cast with your own Google Gemini key. Turn on neither and it makes no network request at all.';
     await load(README_P);
     const plainLen = await page.evaluate(() => document.querySelector('#editor .block').textContent.length);
     await selectBlockPlain(0, 0, plainLen);
     await page.waitForSelector('#selPop:not([hidden])', { timeout: 5000 });
-    await page.click('#selPopMore');
-    await sleep(60);
-    await page.click('#selPopCode');
+    await page.evaluate(() => window.__host('fmt:code'));
     await sleep(100);
-    same('1a README repro via popover wraps opening **', await md(), '`' + README_P + '`');
+    same('1a README repro via Inline Code wraps opening **', await md(), '`' + README_P + '`');
     const selectedAfter = await page.evaluate(() => getSelection().toString());
     assert(selectedAfter.endsWith('at all.'), '1b selection after code wrap still includes "at all."', 'got ' + JSON.stringify(selectedAfter.slice(-20)));
     assert(selectedAfter === README_P, '1c full code span content is selected after wrap');
@@ -161,10 +161,7 @@ try {
     // 8. Add Link via modal over bold, existing link, and code span
     await load('**word**');
     await selectBlockPlain(0, 0, 4);
-    await page.waitForSelector('#selPop:not([hidden])', { timeout: 5000 });
-    await page.click('#selPopMore');
-    await sleep(60);
-    await page.click('#selPopLink');
+    await page.evaluate(() => window.__host('fmt:link'));   // the right-click menu's Link... (and Ctrl+K)
     await page.waitForSelector('#linkModal:not([hidden])', { timeout: 5000 });
     await page.type('#linkModalHref', 'https://x.com');
     await page.click('#linkModalOk');
