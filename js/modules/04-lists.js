@@ -3581,25 +3581,35 @@
                 if (splitBlocks && splitBlocks.length) {
                     targets = splitBlocks;
                     _selectedFormatBlocks = targets.slice();
-                    currentActiveBlock = targets[targets.length - 1];
+                    const focusEl = (currentActiveBlock && targets.indexOf(currentActiveBlock) >= 0)
+                        ? currentActiveBlock : targets[targets.length - 1];
+                    currentActiveBlock = focusEl;
                     try {
-                        currentActiveBlock.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-                        const sel = window.getSelection();
-                        if (sel && targets.length > 0) {
-                            const r = document.createRange();
-                            const focusEl = currentActiveBlock;
-                            r.selectNodeContents(focusEl);
-                            sel.removeAllRanges();
-                            sel.addRange(r);
-                        }
-                        focusEditorNoScroll();
+                        focusEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                        // Leave a collapsed caret at the end of the formatted block, not a selection.
+                        focusBlock(focusEl, (focusEl.textContent || '').length);
+                        if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
                     } catch (e) {
-                        try { focusBlock(currentActiveBlock, null); } catch (e2) {}
+                        try { focusBlock(focusEl, null); } catch (e2) {}
                     }
                     updateStats();
                     updateOutline();
                     HistoryManager.commitEdit();
                     return;
+                }
+            }
+
+            let savedCaretOffset = null;
+            if (targets.length === 1 && !state.revealOnFocus) {
+                try {
+                    const off0 = resolveBlockPlainOffsets(targets[0]);
+                    if (off0 && off0.start === off0.end) savedCaretOffset = off0.start;
+                } catch (eOff) {}
+                if (savedCaretOffset == null && typeof _editorCaretMemory !== 'undefined' && _editorCaretMemory
+                    && _editorCaretMemory.kind === 'preview'
+                    && _editorCaretMemory.start === _editorCaretMemory.end) {
+                    const bi0 = formatBlockIndex(targets[0]);
+                    if (bi0 >= 0 && bi0 === _editorCaretMemory.index) savedCaretOffset = _editorCaretMemory.start;
                 }
             }
 
@@ -3641,17 +3651,14 @@
             currentActiveBlock = targets[targets.length - 1];
             try {
                 currentActiveBlock.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-                // Restore a selection spanning all formatted blocks so user sees multi-select result
-                const sel = window.getSelection();
-                if (sel && targets.length > 0) {
-                    const r = document.createRange();
-                    r.setStartBefore(targets[0]);
-                    r.setEndAfter(targets[targets.length - 1]);
-                    sel.removeAllRanges();
-                    sel.addRange(r);
-                }
-                // Re-focus editor without collapsing multi-select via focusBlock
-                focusEditorNoScroll();
+                // Leave a collapsed caret rather than selecting the whole block, matching Callout
+                // and Lists: formatting a line is not an intent to overwrite it on the next key.
+                const len = (currentActiveBlock.textContent || '').length;
+                const pos = (targets.length === 1 && savedCaretOffset != null)
+                    ? Math.min(savedCaretOffset, len)
+                    : len;
+                focusBlock(currentActiveBlock, pos);
+                if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
             } catch (e) {
                 try { focusBlock(currentActiveBlock, null); } catch (e2) {}
             }

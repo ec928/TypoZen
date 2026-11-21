@@ -154,6 +154,54 @@ try {
     await settled(page);
     same('Ctrl+Alt+2 (AltGr) changes nothing', await saved(), 'Title line\nSecond');
 
+    console.log('\n=== heading, quote and normal text leave a caret, not a whole-line selection ===');
+    await load('Keep this heading\nSecond');
+    b = await lineBox(0);
+    await page.mouse.click(b.x + 20, b.y + b.height / 2);
+    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('h2'); });
+    await settled(page);
+    same('heading leaves a collapsed caret', await page.evaluate(() => { const s = getSelection(); return !!s && s.isCollapsed; }), true);
+    await page.keyboard.type('!');
+    await settled(page);
+    const afterH2 = await saved();
+    same('typing after heading inserts rather than overwriting', /^## .*!/.test(afterH2.split('\n')[0]) && afterH2.split('\n')[0].replace('!', '') === '## Keep this heading', true);
+
+    await load('Keep this quote\nSecond');
+    b = await lineBox(0);
+    await page.mouse.click(b.x + 20, b.y + b.height / 2);
+    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('quote'); });
+    await settled(page);
+    same('quote leaves a collapsed caret', await page.evaluate(() => { const s = getSelection(); return !!s && s.isCollapsed; }), true);
+    await page.keyboard.type('!');
+    await settled(page);
+    const afterQ = await saved();
+    same('typing after quote inserts rather than overwriting', /^> .*!/.test(afterQ.split('\n')[0]) && afterQ.split('\n')[0].replace('!', '') === '> Keep this quote', true);
+
+    await load('## Keep this normal\nSecond');
+    b = await lineBox(0);
+    await page.mouse.click(b.x + 20, b.y + b.height / 2);
+    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('para'); });
+    await settled(page);
+    same('normal text leaves a collapsed caret', await page.evaluate(() => { const s = getSelection(); return !!s && s.isCollapsed; }), true);
+    await page.keyboard.type('!');
+    await settled(page);
+    const afterP = await saved();
+    same('typing after normal text inserts rather than overwriting', afterP.split('\n')[0].includes('!') && afterP.split('\n')[0].replace('!', '') === 'Keep this normal', true);
+
+    await load('Before part after');
+    await page.evaluate(() => {
+        const el = document.querySelector('#editor .block[data-model-index="0"]');
+        const t = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode();
+        const r = document.createRange(); r.setStart(t, 7); r.setEnd(t, 11);
+        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    });
+    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('h2'); });
+    await settled(page);
+    same('partial-selection heading split leaves a collapsed caret', await page.evaluate(() => { const s = getSelection(); return !!s && s.isCollapsed; }), true);
+    await page.keyboard.type('!');
+    await settled(page);
+    same('typing after partial heading split appends to the heading', await saved(), 'Before \n## part!\n after');
+
     console.log('\n=== Alt underlines the menus\' access keys while held ===');
     await load('Some text');
     b = await lineBox(0);
