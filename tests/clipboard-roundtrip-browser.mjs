@@ -559,6 +559,37 @@ async function main() {
         assert(srcClr.docVal === 'one two MENU' && srcClr.findVal === 'one',
             'Source focus routes paste to Source rather than stale Find input (' + JSON.stringify(srcClr) + ')');
 
+        console.log('\n=== Rich-HTML single-line paste keeps leading/trailing spaces ===');
+        const richEdge = await page.evaluate(() => {
+            setSourceDocExt('md');
+            loadMarkdownContent('## Heading two');
+            let b = document.querySelector('#editor .block');
+            focusBlock(b, 'Heading two'.length);
+            pasteLikeCtrlV(' and <b>bold</b>', ' and bold', false);
+            const pWithPlain = getMarkdownContent(false);
+
+            loadMarkdownContent('## Heading two');
+            b = document.querySelector('#editor .block');
+            focusBlock(b, 'Heading two'.length);
+            pasteLikeCtrlV(' and <i>ital</i>', '', false);
+            const pHtmlOnly = getMarkdownContent(false);
+
+            loadMarkdownContent('## Heading two');
+            handleCommand('view_set:mode:source');
+            sourceEditor.focus();
+            sourceEditor.setSelectionRange('## Heading two'.length, '## Heading two'.length);
+            pasteLikeCtrlV(' and <b>bold</b>', ' and bold', false);
+            const sWithPlain = sourceEditor.value;
+            handleCommand('view_set:mode:wysiwyg');
+            return { pWithPlain, pHtmlOnly, sWithPlain };
+        });
+        assert(richEdge.pWithPlain === '## Heading two and **bold**',
+            'Preview rich-HTML paste keeps leading space (' + JSON.stringify(richEdge.pWithPlain) + ')');
+        assert(richEdge.pHtmlOnly === '## Heading two and *ital*',
+            'Preview HTML-only paste keeps leading space (' + JSON.stringify(richEdge.pHtmlOnly) + ')');
+        assert(richEdge.sWithPlain === '## Heading two and **bold**',
+            'Source rich-HTML paste keeps leading space (' + JSON.stringify(richEdge.sWithPlain) + ')');
+
         console.log('\npassed=' + passed + ' failed=' + failed);
         if (failed) { console.error('\nCLIPBOARD ROUND TRIP FAILED'); process.exitCode = 1; return; }
         console.log('\nCLIPBOARD ROUND TRIP PASSED');

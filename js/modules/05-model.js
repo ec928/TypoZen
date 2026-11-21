@@ -2918,6 +2918,20 @@
             if (!plainOnly && allowMarkdown && html && html.indexOf('data-source="typozen"') === -1) {
                 text = htmlToMarkdown(html);
                 fromHtml = !!text;
+                if (fromHtml && text.indexOf('\n') === -1) {
+                    const pStr = plain != null ? String(plain) : '';
+                    if (pStr && !/[\r\n]/.test(pStr)) {
+                        const lm = /^[ \t]+/.exec(pStr);
+                        const tm = /[ \t]+$/.exec(pStr);
+                        if (lm && !/^[ \t]/.test(text)) text = lm[0] + text;
+                        if (tm && !/[ \t]$/.test(text)) text = text + tm[0];
+                    } else if (!pStr) {
+                        const sf = /<!--StartFragment-->([\s\S]*?)<!--EndFragment-->/i.exec(html);
+                        const frag = sf ? sf[1] : String(html).replace(/<\/?(?:html|body)[^>]*>/gi, '');
+                        if (/^[ \t]+/.test(frag) && !/^[ \t]/.test(text)) text = ' ' + text;
+                        if (/[ \t]+$/.test(frag) && !/[ \t]$/.test(text)) text = text + ' ';
+                    }
+                }
             }
             if (!text) text = plain || '';
             if (!text) return;

@@ -875,8 +875,13 @@
             const vis = el.textContent || '';
             off = Math.max(0, Math.min(off | 0, vis.length));
             endOff = endOff != null ? Math.max(off, Math.min(endOff | 0, vis.length)) : off;
+            const leadSp = (/^[ \t]+/.exec(pasted) || [''])[0];
+            const trailSp = (/[ \t]+$/.exec(pasted) || [''])[0];
             const p = make(pasted);
-            const pastedVis = p.textContent || '';
+            const pNodes = unwrap(Array.from(p.childNodes));
+            if (leadSp && !(p.textContent || '').startsWith(leadSp)) pNodes.unshift(document.createTextNode(leadSp));
+            if (trailSp && !(p.textContent || '').endsWith(trailSp)) pNodes.push(document.createTextNode(trailSp));
+            const pastedVis = pNodes.map(function (n) { return n.textContent || ''; }).join('');
             if (!pastedVis) return null;
             if (endOff > off) {
                 const pcA = pointForOffset(el, off);
@@ -899,7 +904,7 @@
                 host = host.firstElementChild;
             }
             const textHost = host.querySelector('.task-text') || host;
-            unwrap(Array.from(p.childNodes)).forEach(function (n) { textHost.appendChild(n); });
+            pNodes.forEach(function (n) { textHost.appendChild(n); });
             tailNodes.forEach(function (n) { textHost.appendChild(n); });
             try {
                 const marks = el.querySelectorAll('strong, b, em, i, del, s, strike, code, mark, u, a');
