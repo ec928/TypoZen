@@ -19,8 +19,11 @@ const tmpMd = path.join(os.tmpdir(), 'tz-menu-clipboard-' + process.pid + '.md')
 const DOC = 'Three ways to see single word here\n\nAlpha line\nBeta line\nGamma line';
 fs.writeFileSync(tmpMd, DOC);
 
-const getClip = () => execFileSync('powershell', ['-NoProfile', '-Command', '[Console]::Out.Write((Get-Clipboard -Raw))'], { encoding: 'utf8' });
-const setClip = (s) => execFileSync('powershell', ['-NoProfile', '-STA', '-Command', `Set-Clipboard -Value '${String(s).replace(/'/g, "''")}'`]);
+const getClip = () => execFileSync('powershell', ['-NoProfile', '-STA', '-Command',
+    'Add-Type -AssemblyName PresentationCore; for ($t=0; $t -lt 10; $t++) { try { $v = [System.Windows.Clipboard]::GetText(); [Console]::Out.Write($v); break } catch { if ($t -eq 9) { throw }; Start-Sleep -Milliseconds 60 } }'
+], { encoding: 'utf8' });
+const setClip = (s) => execFileSync('powershell', ['-NoProfile', '-STA', '-Command',
+    `for ($t=0; $t -lt 10; $t++) { try { Set-Clipboard -Value '${String(s).replace(/'/g, "''")}'; break } catch { if ($t -eq 9) { throw }; Start-Sleep -Milliseconds 60 } }`]);
 const setRichClip = (plain, html) => {
     const ps = [
         'Add-Type -AssemblyName PresentationCore',
@@ -32,7 +35,7 @@ const setRichClip = (plain, html) => {
         '$sh = [Text.Encoding]::UTF8.GetByteCount(($fmt -f 0,0,0,0)); $sf = $sh + [Text.Encoding]::UTF8.GetByteCount($pre); $ef = $sf + [Text.Encoding]::UTF8.GetByteCount($h); $eh = $ef + [Text.Encoding]::UTF8.GetByteCount($post)',
         '$cf = ($fmt -f $sh,$eh,$sf,$ef) + $pre + $h + $post',
         '$d.SetText($cf, [System.Windows.TextDataFormat]::Html)',
-        '[System.Windows.Clipboard]::SetDataObject($d, $true)'
+        'for ($t=0; $t -lt 10; $t++) { try { [System.Windows.Clipboard]::SetDataObject($d, $true); break } catch { if ($t -eq 9) { throw }; Start-Sleep -Milliseconds 60 } }'
     ].join('; ');
     execFileSync('powershell', ['-NoProfile', '-STA', '-Command', ps]);
 };
@@ -285,14 +288,15 @@ try {
     setClip('RESTORED');
     const srcPastePt = await app.eval(() => {
         const lines = document.querySelectorAll('.cm-line');
-        const box = lines[2] ? lines[2].getBoundingClientRect() : document.querySelector('.cm-content').getBoundingClientRect();
-        return { x: box.left + 2, y: box.top + box.height / 2 };
+        const box = lines[1] ? lines[1].getBoundingClientRect() : document.querySelector('.cm-content').getBoundingClientRect();
+        return { x: box.left + 10, y: box.top + box.height / 2 };
     });
+    await app.page.mouse.click(srcPastePt.x, srcPastePt.y); await sleep(120);
     await app.page.mouse.click(srcPastePt.x, srcPastePt.y, { button: 'right' }); await sleep(300);
     invokeMenuPath(['Paste']); await sleep(400);
-    check('Source RC Paste', (await getDoc()).includes('\n\nRESTORED line\nBeta line'), 'doc=' + JSON.stringify(await getDoc()));
+    check('Source RC Paste', (await getDoc()) === 'Three ways to see single word here\nRESTORED\n line\nBeta line\nGamma line', 'doc=' + JSON.stringify(await getDoc()));
 } finally {
-    try { setClip(prevClip); } catch {}
+    try { if (prevClip) setClip(prevClip); } catch {}
     await app.close();
     try { fs.unlinkSync(tmpMd); } catch {}
     clearTimeout(deadline);

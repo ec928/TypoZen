@@ -107,6 +107,64 @@ try {
             console.log('       S ' + res.source.note + JSON.stringify(res.source.out) + '  Z=' + JSON.stringify(res.source.typed));
         }
     }
+
+    for (const [label, doc, where, wantTyped] of [
+        ['bare-caret link Undo + type', 'One two three\nFour five', { line: 0, from: 4 }, 'One !two three\nFour five'],
+        ['table cell bare-caret link Undo + type', 'Intro\n' + TABLE, { cell: 'cell one', from: 5 }, 'Intro\n| a | b |\n| --- | --- |\n| cell !one | two |'],
+    ]) {
+        const res = {};
+        for (const mode of ['wysiwyg', 'source']) {
+            await page.evaluate((m) => { setSourceDocExt('md'); loadMarkdownContent(m); }, doc);
+            await page.evaluate((m) => handleCommand('view_set:mode:' + m), mode);
+            await settled(page);
+            if (mode === 'source') {
+                const base = await page.evaluate((w, d) => {
+                    if (w.cell) return d.indexOf(w.cell) + w.from;
+                    return d.split('\n').slice(0, w.line).reduce((n, l) => n + l.length + 1, 0) + w.from;
+                }, where, doc);
+                await page.evaluate((x) => { sourceEditor.focus(); sourceEditor.setSelectionRange(x, x); }, base);
+            } else if (where.cell) {
+                await page.evaluate((txt, off) => {
+                    const td = [...document.querySelectorAll('#editor td')].find(c => c.textContent.trim() === txt);
+                    const tn = document.createTreeWalker(td, NodeFilter.SHOW_TEXT).nextNode();
+                    const r = document.createRange(); r.setStart(tn, off); r.collapse(true);
+                    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+                    document.getElementById('editor').focus();
+                }, where.cell, where.from);
+            } else {
+                const el = await page.$('#editor .block[data-model-index="' + where.line + '"]');
+                await el.click(); await page.keyboard.press('Home');
+                for (let i = 0; i < where.from; i++) await page.keyboard.press('ArrowRight');
+            }
+            await page.evaluate(() => { freezeFormatSelection(); applyFormatting('link'); });
+            await settled(page);
+            let note = '';
+            const open = await page.evaluate(() => { const m = document.getElementById('linkModal'); return !!m && !m.hidden; });
+            if (open) {
+                await page.focus('#linkModalHref');
+                await page.keyboard.type('https://x.com');
+                await page.keyboard.press('Enter');
+                await settled(page);
+            } else note = '(no dialog)';
+            await page.keyboard.down('Control');
+            await page.keyboard.press('KeyZ');
+            await page.keyboard.up('Control');
+            await settled(page);
+            const undone = await saved();
+            await page.keyboard.type('!');
+            await settled(page);
+            res[mode] = { undone, typed: await saved(), note };
+        }
+        const ok = res.wysiwyg.undone === doc && res.source.undone === doc
+            && res.wysiwyg.typed === wantTyped && res.source.typed === wantTyped;
+        if (ok) passed++; else failed++;
+        console.log((ok ? '  OK   ' : '  FAIL ') + label);
+        if (VERBOSE || !ok) {
+            console.log('       P ' + res.wysiwyg.note + JSON.stringify(res.wysiwyg.undone) + '  !=' + JSON.stringify(res.wysiwyg.typed));
+            console.log('       S ' + res.source.note + JSON.stringify(res.source.undone) + '  !=' + JSON.stringify(res.source.typed));
+            console.log('       W ' + JSON.stringify(doc) + '  !=' + JSON.stringify(wantTyped));
+        }
+    }
 } finally {
     await browser.close();
     clearTimeout(deadline);

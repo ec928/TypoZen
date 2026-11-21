@@ -2784,8 +2784,8 @@
             if ((cmd === "undo" || cmd === "redo") && window.tzPdfActive && typeof window.tzPdfEditAction === 'function') window.tzPdfEditAction(cmd);
             else if (cmd === "undo") { if (typeof HistoryManager !== 'undefined') HistoryManager.undo(); else document.execCommand('undo'); }
             else if (cmd === "redo") { if (typeof HistoryManager !== 'undefined') HistoryManager.redo(); else document.execCommand('redo'); }
-            else if (cmd === "cut") { document.execCommand('cut'); }
-            else if (cmd === "copy") { document.execCommand('copy'); }
+            else if (cmd === "cut") { if (typeof window.tzMenuCopyOrCut === 'function') window.tzMenuCopyOrCut(true); else document.execCommand('cut'); }
+            else if (cmd === "copy") { if (typeof window.tzMenuCopyOrCut === 'function') window.tzMenuCopyOrCut(false); else document.execCommand('copy'); }
             else if (cmd === "find") {
                 openFindBar();
             }

@@ -137,7 +137,7 @@ console.log('\n=== Production template: multi list uses in-place, not reload ===
     assert(mainScript.includes('function applyFormatInPlaceToSelection'),
         'applyFormatInPlaceToSelection exists');
     assert(mainScript.includes('_lastGoodDocRaws'), '_lastGoodDocRaws exists');
-    assert(mainScript.includes('applyFormatInPlaceToSelection(type, forceOff, forceOn)'),
+    assert(/applyFormatInPlaceToSelection\(type,\s*forceOff,\s*forceOn\b/.test(mainScript),
         'applyFormatting calls in-place for multi/list');
     assert(mainScript.includes('do not loadMarkdownContent')
         || mainScript.includes('IN PLACE')
@@ -151,7 +151,7 @@ console.log('\n=== Production template: multi list uses in-place, not reload ===
     const applyIdx = mainScript.indexOf('function applyFormatting');
     // applyFormatting body grew (virt model indices); keep a generous slice
     const applyChunk = mainScript.slice(applyIdx, applyIdx + 20000);
-    assert(applyChunk.includes('applyFormatInPlaceToSelection(type, forceOff, forceOn)'),
+    assert(/applyFormatInPlaceToSelection\(type,\s*forceOff,\s*forceOn\b/.test(applyChunk),
         'list/multi branch uses in-place');
 }
 

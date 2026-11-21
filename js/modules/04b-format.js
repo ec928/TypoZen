@@ -1218,6 +1218,7 @@
                 const adjTableOffsets = {
                     start: emptyLink ? endTablePos : offsets.start,
                     end: endTablePos,
+                    undoOffset: emptyLink ? offsets.start : endTablePos,
                     text: offsets.text,
                     afterLink: emptyLink
                 };
@@ -1245,6 +1246,7 @@
             const adjustedOffsets = {
                 start: emptyLink ? endBlockPos : offsets.start,
                 end: endBlockPos,
+                undoOffset: emptyLink ? offsets.start : endBlockPos,
                 text: offsets.text,
                 afterLink: emptyLink
             };
@@ -1289,8 +1291,10 @@
             try {
                 const bi = typeof formatBlockIndex === 'function' ? formatBlockIndex(block) : -1;
                 if (bi >= 0 && typeof HistoryManager !== 'undefined' && typeof HistoryManager.setTopCarets === 'function') {
-                    const c = { mode: 'wysiwyg', blockIndex: bi, offset: offsets.end, exact: true };
-                    HistoryManager.setTopCarets(c, c);
+                    const redoCaret = { mode: 'wysiwyg', blockIndex: bi, offset: offsets.end, exact: true };
+                    const undoOff = typeof offsets.undoOffset === 'number' ? offsets.undoOffset : offsets.end;
+                    const undoCaret = { mode: 'wysiwyg', blockIndex: bi, offset: undoOff, exact: true };
+                    HistoryManager.setTopCarets(redoCaret, undoCaret);
                 }
             } catch (eHc) {}
             return true;
