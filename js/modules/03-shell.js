@@ -1394,8 +1394,16 @@
                     // nothing to re-resolve.
                 }
                 else if (msg.startsWith("paste_text:")) {
-                    // Host menu Paste (and any host-side clipboard feed) — same path as Ctrl+V
-                    insertPastedPlainText(msg.substring(11));
+                    // Paste as Plain Text (Edit menu, right-click, Ctrl+Shift+V): the words only.
+                    pasteLikeCtrlV('', msg.substring(11), true);
+                }
+                else if (msg.startsWith("paste_rich:")) {
+                    // The menus' Paste: the clipboard's HTML and plain text, pasted exactly as
+                    // Ctrl+V pastes them (pasteLikeCtrlV).
+                    try {
+                        const p = JSON.parse(msg.substring(11));
+                        pasteLikeCtrlV(p.html || '', p.text || '', false);
+                    } catch (eP) {}
                 }
                 else if (msg == "new_document") {
                     // This document is being replaced; a position report armed by the

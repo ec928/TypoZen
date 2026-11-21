@@ -2828,20 +2828,28 @@
             }
 
             e.preventDefault();
+            pasteLikeCtrlV(dt ? dt.getData('text/html') : '', dt ? dt.getData('text/plain') : '');
+        });
 
+        /**
+         * Paste, as Ctrl+V does it: formatted text from a web page or Word becomes its
+         * Markdown, anything else goes in as plain text. The paste event and the menus'
+         * Paste (the host's paste_rich:) both come here, so the two cannot differ -- they did:
+         * the menu read only the plain text and dropped the bold and links Ctrl+V kept.
+         * plainOnly is Paste as Plain Text. Works in Source too (insertPastedPlainText).
+         */
+        function pasteLikeCtrlV(html, plain, plainOnly) {
             // Try HTML first for external rich content (browser pages, Word, etc.)
             // Skip if it's TypoZen's own copy (marked with data-source="typozen")
             let text = '';
             let fromHtml = false;
-            const html = dt ? dt.getData('text/html') : '';
-            if (html && html.indexOf('data-source="typozen"') === -1) {
+            if (!plainOnly && html && html.indexOf('data-source="typozen"') === -1) {
                 text = htmlToMarkdown(html);
                 fromHtml = !!text;
             }
-            if (!text) {
-                text = dt ? dt.getData('text/plain') : '';
-            }
+            if (!text) text = plain || '';
             if (!text) return;
+            if (state.mode === 'source') { insertPastedPlainText(text, fromHtml); return; }
 
             // A paste over a selected picture does nothing (selectionHoldsPicture).
             try { if (typeof selectionHoldsPicture === 'function' && selectionHoldsPicture()) return; } catch (eKp) {}
@@ -2864,7 +2872,8 @@
                 }
             }
             insertPastedPlainText(text, fromHtml, { skipBeginEdit: true });
-        });
+        }
+        window.pasteLikeCtrlV = pasteLikeCtrlV;
 
         // Drag & drop an image file straight into the document
         editor.addEventListener('dragover', (e) => {
@@ -3172,6 +3181,13 @@
             else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'x') {
                 e.preventDefault();
                 applyFormatting('strike');
+            }
+            // Ctrl+Shift+V: Paste as Plain Text. The host reads the clipboard's text and sends
+            // it back (paste_text:), the same route as the menu item.
+            else if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.code === 'KeyV'
+                && typeof formattingMayEdit === 'function' && formattingMayEdit()) {
+                e.preventDefault();
+                postMsg('paste_plain');
             }
             // Ctrl+1..6: headings (the host's key filter sends the same; whichever sees the
             // key first swallows it, as for Ctrl+B). By key position, so it is the digit row

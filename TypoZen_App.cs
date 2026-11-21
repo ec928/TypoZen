@@ -1701,7 +1701,8 @@ namespace TypoZen
             BindClick("mRedo", (s, e) => SendHistoryCmd("cmd:redo"));
             BindClick("mCut", (s, e) => SendMsg("cmd:cut"));
             BindClick("mCopy", (s, e) => SendMsg("cmd:copy"));
-            BindClick("mPaste", (s, e) => PasteFromClipboard());
+            BindClick("mPaste", (s, e) => PasteFromClipboard(false));
+            BindClick("mPastePlain", (s, e) => PasteFromClipboard(true));
             BindClick("mSelectAll", (s, e) => SendMsg("cmd:select_all"));
             BindClick("mFind", (s, e) =>
             {
@@ -3264,6 +3265,13 @@ namespace TypoZen
                 {
                     if (_nativeSurfaceVisible) return;
                     SendMsg("fmt:strike");
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift
+                         && (Keyboard.Modifiers & ModifierKeys.Alt) == 0)
+                {
+                    if (_nativeSurfaceVisible) return;
+                    PasteFromClipboard(true);
                     e.Handled = true;
                 }
                 else if (e.Key >= Key.D1 && e.Key <= Key.D6
@@ -8771,6 +8779,12 @@ namespace TypoZen
                 // Only an exception gets here: every other path has answered and returned.
                 if (rel != null) { try { SendMsg("image_missing:" + rel); } catch { } }
             }
+            else if (msg == "paste_plain")
+            {
+                // Ctrl+Shift+V in the page: Paste as Plain Text.
+                Dispatcher.BeginInvoke(new Action(() => PasteFromClipboard(true)));
+                return;
+            }
             else if (msg.StartsWith("image_paste:", StringComparison.Ordinal))
             {
                 // image_paste:<ext>:<base64>
@@ -8780,15 +8794,7 @@ namespace TypoZen
                     int sep = body.IndexOf(':');
                     string ext = sep > 0 ? body.Substring(0, sep) : "png";
                     string b64 = sep > 0 ? body.Substring(sep + 1) : "";
-                    byte[] bytes = Convert.FromBase64String(b64);
-                    // An untitled document has nowhere to keep images yet. They wait in a
-                    // pending folder and move beside the document at its first save
-                    // (AdoptPendingImages). This used to stop the paste with "Save the
-                    // document first".
-                    string rel = string.IsNullOrEmpty(_currentFilePath)
-                        ? SavePendingImage(bytes, ext)
-                        : SaveImageBesideDocument(bytes, ext);
-                    if (!string.IsNullOrEmpty(rel)) SendMsg("insert_image:" + rel);
+                    PasteImageBytes(Convert.FromBase64String(b64), ext);
                 }
                 catch (Exception ex)
                 {
@@ -11518,7 +11524,7 @@ namespace TypoZen
         private static readonly string[] FormatControls =
         {
             "menuFormat",
-            "mUndo", "mRedo", "mCut", "mPaste",
+            "mUndo", "mRedo", "mCut", "mPaste", "mPastePlain",
         };
 
         private static readonly string[] CalloutKinds = { "Note", "Tip", "Important", "Warning", "Caution" };
@@ -12044,7 +12050,7 @@ namespace TypoZen
             bool md = !System.Text.RegularExpressions.Regex.IsMatch(s, @"""md""\s*:\s*false");
 
             var cm = NewPointerMenu();
-            foreach (string name in new[] { "mCut", "mCopy", "mPaste", "mSelectAll" })
+            foreach (string name in new[] { "mCut", "mCopy", "mPaste", "mPastePlain", "mSelectAll" })
             {
                 var one = FindElement(name) as MenuItem;
                 if (one == null) continue;
@@ -13651,11 +13657,46 @@ namespace TypoZen
         /// Menu Paste: same content path as Ctrl+V. WebView2 blocks document.execCommand('paste');
         /// host clipboard → paste_text → JS insertPastedPlainText (shared with the paste event).
         /// </summary>
-        private void PasteFromClipboard()
+        /// <summary>
+        /// The menus' Paste (plain = false) does what Ctrl+V does in the page: a picture first,
+        /// then formatted text as Markdown, then plain text -- the page pastes it through the
+        /// same function (pasteLikeCtrlV). It used to send the plain text only, so a paste from
+        /// a web page lost its bold and links by menu and kept them by Ctrl+V.
+        /// plain = true is Paste as Plain Text (Edit menu, right-click, Ctrl+Shift+V).
+        /// </summary>
+        private void PasteFromClipboard(bool plain)
         {
             try
             {
                 try { if (_webView != null) _webView.Focus(); } catch { }
+                if (!plain)
+                {
+                    byte[] png = null;
+                    try
+                    {
+                        if (Clipboard.ContainsImage())
+                        {
+                            var img = Clipboard.GetImage();
+                            if (img != null)
+                            {
+                                var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                                enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(img));
+                                using (var ms = new MemoryStream()) { enc.Save(ms); png = ms.ToArray(); }
+                            }
+                        }
+                    }
+                    catch { png = null; }
+                    if (png != null && png.Length > 0)
+                    {
+                        try { PasteImageBytes(png, "png"); }
+                        catch (Exception ex)
+                        {
+                            WinForms.MessageBox.Show("Could not save the image: " + ex.Message, "Paste image",
+                                WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Error);
+                        }
+                        return;
+                    }
+                }
                 string text = null;
                 try
                 {
@@ -13672,10 +13713,40 @@ namespace TypoZen
                     }
                     catch { }
                 }
+                string html = null;
+                if (!plain)
+                {
+                    try
+                    {
+                        if (Clipboard.ContainsText(TextDataFormat.Html))
+                            html = Clipboard.GetText(TextDataFormat.Html);
+                    }
+                    catch { html = null; }
+                }
+                if (!string.IsNullOrEmpty(html))
+                {
+                    var payload = new Dictionary<string, object> { { "html", html }, { "text", text ?? "" } };
+                    var ser = new System.Web.Script.Serialization.JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+                    SendMsg("paste_rich:" + ser.Serialize(payload));
+                    return;
+                }
                 if (string.IsNullOrEmpty(text)) return;
                 SendMsg("paste_text:" + text);
             }
             catch { }
+        }
+
+        /// <summary>Save a pasted picture beside the document (or pending, if untitled) and insert it.</summary>
+        private void PasteImageBytes(byte[] bytes, string ext)
+        {
+            // An untitled document has nowhere to keep images yet. They wait in a
+            // pending folder and move beside the document at its first save
+            // (AdoptPendingImages). This used to stop the paste with "Save the
+            // document first".
+            string rel = string.IsNullOrEmpty(_currentFilePath)
+                ? SavePendingImage(bytes, ext)
+                : SaveImageBesideDocument(bytes, ext);
+            if (!string.IsNullOrEmpty(rel)) SendMsg("insert_image:" + rel);
         }
 
         private void EnsureAtLeastOneTab()
