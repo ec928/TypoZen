@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.21.24";
+        internal const string AppVersion = "0.21.25";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1782,7 +1782,7 @@ namespace TypoZen
             BindClick("mJustify",     (s, e) => SetJustified(!_justified));
             BindClick("mSidebarAutoHide", (s, e) => SetSidebarAutoHide(!_sidebarAutoHide));
             BindClick("mAutosave", (s, e) => SetAutosave(!_autosave));
-            var mSpeed = FindElement("mConfigureSpeed") as MenuItem; if (mSpeed != null) mSpeed.Header = "Voice _Sampler..."; BindClick("mConfigureSpeed", (s, e) => ShowConfigureVoiceDialog());
+            var mSpeed = FindElement("mConfigureSpeed") as MenuItem; if (mSpeed != null) mSpeed.Header = "_Voice Sampler..."; BindClick("mConfigureSpeed", (s, e) => ShowConfigureVoiceDialog());
             // Speed's one home: built from the setting each time Read Aloud opens, so its tick and
             // its header always show the speed in use (the reading bar steps the same list).
             var readAloudMenu = FindElement("mReadAloudMenu") as MenuItem;
