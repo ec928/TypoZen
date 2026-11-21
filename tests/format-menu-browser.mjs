@@ -504,19 +504,33 @@ try {
             p2sR.start === wantRedoStart && p2sR.end === wantRedoStart, true);
     }
 
-    // 2. Source inline bold Undo / Redo & Preview multi-block inline Undo / Redo
+    // 2. Source inline bold/italic selection span + Undo / Redo & Preview multi-block inline Undo / Redo
     await loadQuick(DOC_U, 'md', 'source');
     await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(18, 22); applyFormatting('bold'); });
     await settleQuick();
     same('Source inline bold doc matches', await saved(), 'First line\nSecond **line** here\nThird line');
+    const srcBoldSel1 = await undoSnap();
+    same('Source inline bold keeps ONLY **line** selected (18..26)', srcBoldSel1.start === 18 && srcBoldSel1.end === 26, true);
+    await page.evaluate(() => applyFormatting('bold'));
+    await settleQuick();
+    same('Source inline bold second toggle restores original line', await saved(), DOC_U);
+    const srcBoldSel2 = await undoSnap();
+    same('Source inline bold toggle-off keeps ONLY line selected (18..22)', srcBoldSel2.start === 18 && srcBoldSel2.end === 22, true);
+    await page.evaluate(() => { applyFormatting('bold'); applyFormatting('italic'); });
+    await settleQuick();
+    same('Source inline bold then italic wraps span cleanly', await saved(), 'First line\nSecond ***line*** here\nThird line');
+    const srcItalicSel = await undoSnap();
+    same('Source inline bold+italic keeps ONLY ***line*** selected (18..28)', srcItalicSel.start === 18 && srcItalicSel.end === 28, true);
     await page.evaluate(() => HistoryManager.undo());
     await settleQuick();
     const srcBoldU = await undoSnap();
-    same('Source inline bold Undo places collapsed caret at end of original word (22)', srcBoldU.start === 22 && srcBoldU.end === 22, true);
-    await page.evaluate(() => HistoryManager.redo());
+    same('Source inline Undo 1 restores **line** with caret at span end (26)',
+        (await saved()) === 'First line\nSecond **line** here\nThird line' && srcBoldU.start === 26 && srcBoldU.end === 26, true);
+    await page.evaluate(() => HistoryManager.undo());
     await settleQuick();
-    const srcBoldR = await undoSnap();
-    same('Source inline bold Redo places collapsed caret after closing ** (26)', srcBoldR.start === 26 && srcBoldR.end === 26, true);
+    const srcBoldU2 = await undoSnap();
+    same('Source inline Undo 2 restores DOC_U with caret at original word end (22)',
+        (await saved()) === DOC_U && srcBoldU2.start === 22 && srcBoldU2.end === 22, true);
 
     await loadQuick('First line here\nSecond line tail', 'md', 'wysiwyg');
     await page.evaluate(() => {
@@ -599,7 +613,79 @@ try {
     await settleQuick();
     same('Shift+Enter h2 Undo restores original block', await saved(), 'First\nSecond');
     checkEndCaret(await undoSnap(), 0, 'Shift+Enter h2 Undo');
+
+    // 4. Insert Table leaves collapsed caret at start of Header 1 in both Source and Preview
+    await loadQuick('Intro', 'md', 'source');
+    await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(5, 5); insertMarkdownTable(2, 1); });
+    await settleQuick();
+    const tblSrcC = await undoSnap();
+    same('Source Insert Table leaves collapsed caret at Header 1',
+        tblSrcC.start === tblSrcC.end && (await page.evaluate((p) => sourceEditor.value.slice(p, p + 8), tblSrcC.start)) === 'Header 1', true);
+    await page.keyboard.type('X');
+    await settleQuick();
+    same('Source typing after Insert Table inserts into Header 1 (does not overwrite table)',
+        (await saved()).includes('| XHeader 1 | Header 2 |'), true);
+    await loadQuick('Intro', 'md', 'source');
+    await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(5, 5); insertMarkdownTable(2, 1); });
+    await settleQuick();
+    await page.evaluate(() => HistoryManager.undo());
+    await settleQuick();
+    const tblSrcU = await undoSnap();
+    same('Source Insert Table Undo restores doc and caret 5',
+        (await saved()) === 'Intro' && tblSrcU.start === 5 && tblSrcU.end === 5, true);
+
+    await loadQuick('Intro', 'md', 'wysiwyg');
+    await focusAt(0, 5);
+    await page.evaluate(() => { state.targetTableBlock = document.querySelector('#editor .block[data-model-index="0"]'); insertMarkdownTable(2, 1); });
+    await settleQuick();
+    const tblPvC = await undoSnap();
+    // At the start of the first header cell: offset 0 of the block itself is outside the
+    // grid, and the first key typed there left the table (fixed in 0.21.12).
+    const inHeader = await page.evaluate(() => {
+        const s = getSelection(); const n = s && s.anchorNode;
+        const el = n && (n.nodeType === 1 ? n : n.parentElement);
+        const th = el && el.closest && el.closest('th');
+        return !!(s && s.isCollapsed && th && th === document.querySelector('#editor .block[data-model-index="1"] thead th') && s.anchorOffset === 0);
+    });
+    same('Preview Insert Table leaves a collapsed caret at the start of the first header cell',
+        tblPvC.blkIdx === '1' && inHeader, true);
+    await page.evaluate(() => HistoryManager.undo());
+    await settleQuick();
+    const tblPvU = await undoSnap();
+    same('Preview Insert Table Undo restores doc and block 0 offset 5',
+        (await saved()) === 'Intro' && tblPvU.collapsed && tblPvU.blkIdx === '0' && tblPvU.off[0] === 5, true);
     await loadQuick('plain', 'md', 'wysiwyg');
+
+    console.log('\n=== keys pressed for real: Source word formats, Insert Table then type ===');
+    for (const [key, shift, want] of [['KeyB', false, 'Hello **world** tail'], ['KeyI', false, 'Hello *world* tail'], ['KeyX', true, 'Hello ~~world~~ tail']]) {
+        await loadQuick('Hello world tail', 'md', 'source');
+        await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(6, 6); });
+        await page.keyboard.down('Shift'); for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowRight'); await page.keyboard.up('Shift');
+        await page.keyboard.down('Control'); if (shift) await page.keyboard.down('Shift');
+        await page.keyboard.press(key);
+        if (shift) await page.keyboard.up('Shift'); await page.keyboard.up('Control');
+        await settled(page);
+        const sel = await page.evaluate(() => sourceEditor.value.slice(sourceEditor.selectionStart, sourceEditor.selectionEnd));
+        same('Source ' + key + ' on a selected word: only the word stays selected (' + JSON.stringify(sel) + ')',
+            (await saved()) === want && sel.replace(/[*~]/g, '') === 'world', true);
+    }
+    for (const mode of ['source', 'wysiwyg']) {
+        await loadQuick('Intro', 'md', mode);
+        if (mode === 'source') await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(5, 5); });
+        else { b = await lineBox(0); await page.mouse.click(b.x + 200, b.y + b.height / 2); await page.keyboard.press('End'); }
+        await page.evaluate(() => { freezeFormatSelection(); applyFormatting('table'); });   // the host's fmt:table
+        await settled(page);
+        const cell = await page.evaluate(() => {
+            const cs = [...document.querySelectorAll('#tableSizePicker .tz-table-picker-cell')];
+            const r = cs[11].getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        });
+        await page.mouse.move(cell.x, cell.y); await page.mouse.click(cell.x, cell.y);
+        await settled(page);
+        await page.keyboard.type('X');
+        await settled(page);
+        same(mode + ': typing after Insert Table goes into the first header cell',
+            (await saved()).indexOf('Intro\n| XHeader 1 | Header 2 |') === 0, true);
+    }
 
     console.log('\n=== Alt underlines the menus\' access keys while held ===');
     await load('Some text');

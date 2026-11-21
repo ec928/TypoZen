@@ -911,14 +911,10 @@
                         while (p < linePlainToRaw.length && linePlainToRaw[p] < rel) p++;
                         return p;
                     };
+                    const pStart = plainAt(start - lineStart);
                     const pEnd = plainAt(end - lineStart);
-                    const rawNext = applyInlineFormatToRaw(line, plainAt(start - lineStart), pEnd, type, { refuseIfLossy: true });
+                    const rawNext = applyInlineFormatToRaw(line, pStart, pEnd, type, { refuseIfLossy: true });
                     if (rawNext != null) {
-                        HistoryManager.beginEdit();
-                        sourceSetRangeTextPreserveScroll(rawNext, lineStart, lineEnd, 'select');
-                        resizeSourceEditor();
-                        updateStats();
-                        HistoryManager.commitEdit();
                         const np = (rawNext.match(/^(?:#{1,6}\s+|>\s*|[ \t]*(?:[-*+]\s+(?:\[[ xX]\]\s?)?|\d+\.(?!\d)\s*))/) || [''])[0];
                         let nextBody = rawNext.slice(np.length);
                         if (np && /^#/.test(np)) {
@@ -926,9 +922,25 @@
                             if (cm2) nextBody = nextBody.slice(0, nextBody.length - cm2[0].length);
                         }
                         const nextP2r = plainRangeToRawOffsets(nextBody, 0, 0).plainToRaw || [];
-                        const rawInNext = pEnd < nextP2r.length ? nextP2r[pEnd] : nextBody.length;
-                        const redoOff = Math.min(lineStart + rawNext.length, lineStart + np.length + rawInNext);
-                        stampSrcInlineCaret(redoOff, end, false);
+                        const rawStartBase = pStart > 0 ? (nextP2r[pStart - 1] + 1) : 0;
+                        const rawCharStart = pStart < nextP2r.length ? nextP2r[pStart] : nextBody.length;
+                        const openedAtStart = rawStartBase < rawCharStart;
+                        const rawStartInNext = openedAtStart ? rawStartBase : rawCharStart;
+                        const rawEndInNext = openedAtStart
+                            ? (pEnd < nextP2r.length ? nextP2r[pEnd] : nextBody.length)
+                            : (pEnd > 0 && (pEnd - 1) < nextP2r.length ? (nextP2r[pEnd - 1] + 1) : rawStartInNext);
+                        const selStart = Math.min(lineStart + rawNext.length, lineStart + np.length + rawStartInNext);
+                        const selEnd = Math.max(selStart, Math.min(lineStart + rawNext.length, lineStart + np.length + rawEndInNext));
+                        HistoryManager.beginEdit();
+                        withSourceScrollPreserved(function () {
+                            sourceEditor.setRangeText(rawNext, lineStart, lineEnd, 'end');
+                            sourceEditor.setSelectionRange(selStart, selEnd);
+                        });
+                        resizeSourceEditor();
+                        updateStats();
+                        HistoryManager.commitEdit();
+                        _sourceFormatSel = (selStart !== selEnd) ? { start: selStart, end: selEnd } : null;
+                        stampSrcInlineCaret(selEnd, end, false);
                         return true;
                     }
                     rep = open + inner + close;

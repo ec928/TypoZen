@@ -3086,11 +3086,25 @@
                 let text = tableMd;
                 const val = sourceEditor.value || '';
                 if (start > 0 && val.charAt(start - 1) !== '\n') text = '\n' + text;
-                sourceEditor.setRangeText(text, start, end, 'select');
+                const h1Rel = text.indexOf('Header 1');
+                const caretPos = start + (h1Rel >= 0 ? h1Rel : 0);
+                sourceEditor.setRangeText(text, start, end, 'end');
+                sourceEditor.setSelectionRange(caretPos, caretPos);
                 sourceEditor.focus();
+                resizeSourceEditor();
                 if (typeof HistoryManager !== 'undefined') {
-                    try { HistoryManager.recordEditPair(pre, sourceEditor.value); } catch (e) {}
+                    try {
+                        HistoryManager.recordEditPair(pre, sourceEditor.value);
+                        if (typeof HistoryManager.setTopCarets === 'function') {
+                            HistoryManager.setTopCarets(
+                                { mode: 'source', start: caretPos, end: caretPos, exact: true },
+                                { mode: 'source', start: start, end: start, exact: true }
+                            );
+                        }
+                    } catch (e) {}
                 }
+                if (typeof _sourceFormatSel !== 'undefined') _sourceFormatSel = null;
+                if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
                 savePreferences();
                 updateStats();
                 return;
@@ -3101,21 +3115,53 @@
                 const blocks = editor.querySelectorAll('.block');
                 if (blocks.length > 0) active = blocks[blocks.length - 1];
             }
+            const preBi = (active && typeof formatBlockIndex === 'function') ? formatBlockIndex(active) : 0;
+            let preOff = 0;
+            try {
+                const po = (active && typeof getPlainOffsetsInBlock === 'function') ? getPlainOffsetsInBlock(active) : null;
+                if (po && po.start != null) preOff = po.start | 0;
+            } catch (ePo) {}
+            let targetBlock = null;
             if (active && active.classList.contains('block')) {
                 let raw = active.getAttribute('data-raw') || active.innerText;
                 if (!String(raw || '').trim()) {
                     writeBlockRaw(active, tableMd);
-                    focusBlock(active, 0);
+                    targetBlock = active;
                 } else {
-                    const newBlock = createBlock(tableMd, active);
-                    focusBlock(newBlock, 0);
+                    targetBlock = createBlock(tableMd, active);
                 }
             } else {
-                const newBlock = createBlock(tableMd);
-                focusBlock(newBlock, 0);
+                targetBlock = createBlock(tableMd);
+            }
+            if (targetBlock) {
+                focusBlock(targetBlock, 0);
+                // Into the first header cell, at its start, as Source does. Offset 0 of the
+                // table's block is outside the grid, so the first key typed left the table and
+                // landed on a new line below it (before 0.21.12 too).
+                try {
+                    const th = typeof tableCellAt === 'function' ? tableCellAt(targetBlock, -1, 0) : null;
+                    if (th) {
+                        const r = document.createRange();
+                        r.selectNodeContents(th);
+                        r.collapse(true);
+                        const s = window.getSelection();
+                        s.removeAllRanges();
+                        s.addRange(r);
+                    }
+                } catch (eCell) {}
+                if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
             }
             if (typeof HistoryManager !== 'undefined') {
-                try { HistoryManager.recordEditPair(pre, getMarkdownContent(false)); } catch (e2) {}
+                try {
+                    HistoryManager.recordEditPair(pre, getMarkdownContent(false));
+                    const postBi = (targetBlock && typeof formatBlockIndex === 'function') ? formatBlockIndex(targetBlock) : -1;
+                    if (postBi >= 0 && typeof HistoryManager.setTopCarets === 'function') {
+                        HistoryManager.setTopCarets(
+                            { mode: 'wysiwyg', blockIndex: postBi, offset: 0, exact: true },
+                            { mode: 'wysiwyg', blockIndex: preBi >= 0 ? preBi : 0, offset: preOff, exact: true }
+                        );
+                    }
+                } catch (e2) {}
             }
             updateStats();
             updateOutline();
