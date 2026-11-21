@@ -766,6 +766,39 @@ try {
     same('the popup shows the reading tools, Search web among them', pop.reading.join(','),
         'selPopFind,selPopRead,selPopReadFromHere,selPopMark,selPopSearchWeb');
     same('and no formatting and no More', pop.formatting.join(','), '');
+
+    console.log('\n=== menu Copy and Cut extract and mutate even after focus left to the menu ===');
+    await loadQuick('Three ways to see single word here', 'md', 'wysiwyg');
+    await selectPart(0, 18, 24);
+    await page.evaluate(() => { window.getSelection().removeAllRanges(); });
+    const pvCopy = await page.evaluate(() => tzMenuCopyOrCut(false));
+    same('Preview blurred Copy extracts exact text ("single")', pvCopy.text, 'single');
+    same('Preview blurred Copy carries typozen HTML marker', /data-source="typozen"/.test(pvCopy.html), true);
+    same('Preview Copy leaves document intact', await saved(), 'Three ways to see single word here');
+
+    await selectPart(0, 18, 24);
+    await page.evaluate(() => { window.getSelection().removeAllRanges(); });
+    const pvCut = await page.evaluate(() => tzMenuCopyOrCut(true));
+    await settleQuick();
+    same('Preview blurred Cut extracts exact text ("single")', pvCut.text, 'single');
+    same('Preview blurred Cut deletes selection from document', await saved(), 'Three ways to see  word here');
+
+    await loadQuick('Alpha line\nBeta line\nGamma line', 'md', 'wysiwyg');
+    await selectBlocks(0, 1);
+    await page.evaluate(() => { window.getSelection().removeAllRanges(); });
+    const mbCopy = await page.evaluate(() => tzMenuCopyOrCut(false));
+    same('Preview blurred multi-block Copy gets both lines', mbCopy.text, 'Alpha line\nBeta line');
+    const mbCut = await page.evaluate(() => tzMenuCopyOrCut(true));
+    await settleQuick();
+    same('Preview blurred multi-block Cut extracts both lines and leaves third', mbCut.text === 'Alpha line\nBeta line' && (await saved()) === '\nGamma line', true);
+
+    await loadQuick('Alpha line\nBeta line', 'md', 'source');
+    await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(11, 15); sourceEditor.blur && sourceEditor.blur(); });
+    const srcCopy = await page.evaluate(() => tzMenuCopyOrCut(false));
+    same('Source Copy gets "Beta" with empty html', srcCopy.text === 'Beta' && srcCopy.html === '', true);
+    const srcCut = await page.evaluate(() => tzMenuCopyOrCut(true));
+    await settleQuick();
+    same('Source Cut removes "Beta"', srcCut.text === 'Beta' && (await saved()) === 'Alpha line\n line', true);
 } finally {
     await browser.close();
     clearTimeout(deadline);

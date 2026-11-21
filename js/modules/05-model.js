@@ -4020,6 +4020,145 @@
                 updateOutline();
             });
 
+            // Menu Copy and Cut: closing a WPF menu leaves the WebView without user activation
+            // (so document.execCommand('copy'/'cut') is silently ignored). Extract the selection
+            // (performing the cut if requested) and return { text, html } for the host clipboard.
+            window.tzMenuCopyOrCut = function tzMenuCopyOrCut(isCut) {
+                try {
+                    const a = document.activeElement;
+                    if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')
+                        && a !== sourceEditor && (!editor || !editor.contains(a))) {
+                        const s = a.selectionStart | 0;
+                        const e = a.selectionEnd | 0;
+                        if (e <= s) return { text: '', html: '' };
+                        const text = String(a.value || '').slice(s, e);
+                        if (isCut && !a.readOnly && !a.disabled) {
+                            a.setRangeText('', s, e, 'start');
+                            a.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                        return { text: text, html: '' };
+                    }
+                    if (state.mode === 'source' && sourceEditor) {
+                        let s = sourceEditor.selectionStart | 0;
+                        let e = sourceEditor.selectionEnd | 0;
+                        if (e <= s && typeof restoreEditorFocusAfterChrome === 'function') {
+                            restoreEditorFocusAfterChrome();
+                            s = sourceEditor.selectionStart | 0;
+                            e = sourceEditor.selectionEnd | 0;
+                        }
+                        if (e <= s) return { text: '', html: '' };
+                        const text = String(sourceEditor.value || '').slice(s, e);
+                        if (isCut) {
+                            if (typeof HistoryManager !== 'undefined') HistoryManager.beginEdit();
+                            try { sourceEditor.focus(); } catch (eF) {}
+                            sourceEditor.setRangeText('', s, e, 'start');
+                            if (typeof HistoryManager !== 'undefined') HistoryManager.snapshot(true);
+                            try { if (typeof rememberEditorCaret === 'function') rememberEditorCaret(); } catch (eRm) {}
+                            try { updateStats(); updateOutline(); } catch (eSt) {}
+                        }
+                        return { text: text, html: '' };
+                    }
+                    if (window.tzPdfActive) {
+                        const pdfSel = window.getSelection();
+                        return { text: pdfSel ? String(pdfSel.toString()) : '', html: '' };
+                    }
+                    let sel = window.getSelection();
+                    if (!sel || !sel.rangeCount || sel.isCollapsed) {
+                        if (typeof restoreEditorFocusAfterChrome === 'function') {
+                            restoreEditorFocusAfterChrome();
+                        }
+                        sel = window.getSelection();
+                    }
+                    const hasFrozenMulti = (typeof _mbSelFreeze !== 'undefined' && _mbSelFreeze
+                        && _mbSelFreeze.toIdx > _mbSelFreeze.fromIdx);
+                    if ((!sel || !sel.rangeCount || sel.isCollapsed) && !hasFrozenMulti) {
+                        return { text: '', html: '' };
+                    }
+                    const text = (typeof selectionToPlainText === 'function' ? selectionToPlainText() : '')
+                        || (sel && sel.rangeCount ? String(sel.toString()) : '');
+                    if (!text) return { text: '', html: '' };
+                    let html = '';
+                    if (sel && sel.rangeCount && !sel.isCollapsed) {
+                        const r0 = sel.getRangeAt(0);
+                        const partialHtml = (typeof selectionIsWholeVirtualDocument === 'function')
+                            && selectionIsWholeVirtualDocument(r0);
+                        if (!partialHtml) {
+                            const holder = document.createElement('div');
+                            holder.setAttribute('data-source', 'typozen');
+                            holder.appendChild(r0.cloneContents());
+                            html = holder.outerHTML;
+                        }
+                    }
+                    if (isCut && editor && editor.isContentEditable) {
+                        let handledWhole = false;
+                        if (sel && sel.rangeCount && !sel.isCollapsed) {
+                            try {
+                                const r0 = sel.getRangeAt(0);
+                                if (typeof selectionIsWholeEditor === 'function' && selectionIsWholeEditor(r0)) {
+                                    if (typeof replaceWholeDocumentFromModel === 'function') {
+                                        replaceWholeDocumentFromModel('');
+                                    }
+                                    handledWhole = true;
+                                }
+                            } catch (eWh) {}
+                        }
+                        if (!handledWhole) {
+                            try {
+                                if (typeof snapshotMultiBlockSelectionFromLive === 'function')
+                                    snapshotMultiBlockSelectionFromLive();
+                            } catch (eSn) {}
+                            let multi = false;
+                            if (sel && !sel.isCollapsed && sel.rangeCount
+                                && sel.anchorNode && editor.contains(sel.anchorNode)) {
+                                const r0 = sel.getRangeAt(0);
+                                const sb = getAncestorBlock(r0.startContainer);
+                                const eb = getAncestorBlock(r0.endContainer);
+                                if (sb && eb && sb !== eb) multi = true;
+                            }
+                            if (typeof caretSupersedesMultiBlockFreeze === 'function')
+                                caretSupersedesMultiBlockFreeze();
+                            if (!multi && typeof _mbSelFreeze !== 'undefined' && _mbSelFreeze
+                                && _mbSelFreeze.toIdx > _mbSelFreeze.fromIdx) multi = true;
+                            if (multi) {
+                                const cutAt = removeCrossBlockSelection();
+                                if (cutAt) {
+                                    window.isProgrammaticFocus = true;
+                                    const caretToCut = function () { return placeCaretAtCut(cutAt); };
+                                    try { caretToCut(); } catch (err2) {}
+                                    setTimeout(function () {
+                                        try {
+                                            const b = caretToCut();
+                                            if (b) ensureCaretVisible(b);
+                                        } catch (err3) {}
+                                    }, 0);
+                                }
+                            } else if (sel && sel.rangeCount && !sel.isCollapsed) {
+                                if (typeof HistoryManager !== 'undefined') HistoryManager.beginEdit();
+                                focusEditorNoScroll();
+                                try { document.execCommand('delete'); } catch (eDel) {}
+                                const postSel = window.getSelection();
+                                if (postSel && postSel.rangeCount && !postSel.isCollapsed) {
+                                    const r = postSel.getRangeAt(0);
+                                    r.deleteContents();
+                                    r.collapse(true);
+                                    postSel.removeAllRanges();
+                                    postSel.addRange(r);
+                                }
+                                try { if (typeof flushActiveBlockToRaw === 'function') flushActiveBlockToRaw(); } catch (eFl) {}
+                                try { if (typeof _formatSelectionFrozen !== 'undefined') _formatSelectionFrozen = false; } catch (eFz) {}
+                                if (typeof HistoryManager !== 'undefined') HistoryManager.snapshot(true);
+                            }
+                        }
+                        try { if (typeof rememberEditorCaret === 'function') rememberEditorCaret(); } catch (eRm2) {}
+                        try { updateStats(); updateOutline(); } catch (eSt2) {}
+                    }
+                    return { text: text, html: html };
+                } catch (err) {
+                    try { window.tzLogException('menuCopyOrCut', err); } catch (eL) {}
+                    return { text: '', html: '' };
+                }
+            };
+
             // Dragging text WITHIN the document moves DOM nodes between blocks with no
             // handler to reconcile them. Blocking the drag is a fair trade: it is a rare
             // gesture and the alternative is corrupted structure. Dropping files in still

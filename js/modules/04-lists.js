@@ -4424,8 +4424,9 @@
         document.addEventListener('contextmenu', function (e) {
             if (!formatMenuOwnsRightClick(e.target)) return;
             e.preventDefault();
-            // The menu takes focus from the page, so the selection is frozen now, as a
-            // toolbar click froze it. The Menu key gives no mousedown to unfreeze first.
+            // The menu takes focus from the page, so the selection and caret memory are
+            // captured now while the editor still owns them.
+            try { if (typeof rememberEditorCaret === 'function') rememberEditorCaret(); } catch (eRm) {}
             try {
                 if (state.mode !== 'source') {
                     _formatSelectionFrozen = false;

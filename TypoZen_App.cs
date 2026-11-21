@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.21.16";
+        internal const string AppVersion = "0.21.17";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -1699,8 +1699,8 @@ namespace TypoZen
 
             BindClick("mUndo", (s, e) => SendHistoryCmd("cmd:undo"));
             BindClick("mRedo", (s, e) => SendHistoryCmd("cmd:redo"));
-            BindClick("mCut", (s, e) => SendMsg("cmd:cut"));
-            BindClick("mCopy", (s, e) => SendMsg("cmd:copy"));
+            BindClick("mCut", (s, e) => CopyOrCutFromPage(true));
+            BindClick("mCopy", (s, e) => CopyOrCutFromPage(false));
             BindClick("mPaste", (s, e) => PasteFromClipboard(false));
             BindClick("mPastePlain", (s, e) => PasteFromClipboard(true));
             BindClick("mSelectAll", (s, e) => SendMsg("cmd:select_all"));
@@ -13746,6 +13746,69 @@ namespace TypoZen
                 SendMsg("paste_text:" + text);
             }
             catch { }
+        }
+
+        /// <summary>
+        /// Copy or Cut from the menus: Ask the page for the selection (performing the cut
+        /// if requested) and write directly to the Windows clipboard, because closing the
+        /// WPF menu leaves WebView2 without user activation for document.execCommand.
+        /// </summary>
+        private async void CopyOrCutFromPage(bool cut)
+        {
+            try
+            {
+                if (_webView == null || _webView.CoreWebView2 == null) return;
+                if (cut && !IsDocumentEditable()) return;
+                try { _webView.Focus(); } catch { }
+                string raw = await _webView.CoreWebView2.ExecuteScriptAsync(
+                    "typeof tzMenuCopyOrCut === 'function' ? JSON.stringify(tzMenuCopyOrCut(" + (cut ? "true" : "false") + ")) : ''");
+                if (string.IsNullOrEmpty(raw)) return;
+                var ser = new System.Web.Script.Serialization.JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+                string json = ser.Deserialize<string>(raw);
+                if (string.IsNullOrEmpty(json)) return;
+                var dict = ser.Deserialize<Dictionary<string, object>>(json);
+                if (dict == null) return;
+                string text = dict.ContainsKey("text") && dict["text"] != null ? dict["text"].ToString() : "";
+                string html = dict.ContainsKey("html") && dict["html"] != null ? dict["html"].ToString() : "";
+                if (string.IsNullOrEmpty(text)) return;
+                SetClipboardPayload(text, html);
+            }
+            catch { }
+        }
+
+        private static string BuildCfHtml(string fragment)
+        {
+            const string headerFmt = "Version:0.9\r\nStartHTML:{0:0000000000}\r\nEndHTML:{1:0000000000}\r\nStartFragment:{2:0000000000}\r\nEndFragment:{3:0000000000}\r\n";
+            const string pre = "<html><body><!--StartFragment-->";
+            const string post = "<!--EndFragment--></body></html>";
+            string dummyHeader = string.Format(headerFmt, 0, 0, 0, 0);
+            int startHtml = Encoding.UTF8.GetByteCount(dummyHeader);
+            int startFrag = startHtml + Encoding.UTF8.GetByteCount(pre);
+            int endFrag = startFrag + Encoding.UTF8.GetByteCount(fragment ?? "");
+            int endHtml = endFrag + Encoding.UTF8.GetByteCount(post);
+            return string.Format(headerFmt, startHtml, endHtml, startFrag, endFrag) + pre + (fragment ?? "") + post;
+        }
+
+        private static void SetClipboardPayload(string text, string html)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            try
+            {
+                if (!string.IsNullOrEmpty(html))
+                {
+                    var data = new DataObject();
+                    data.SetText(text, TextDataFormat.UnicodeText);
+                    data.SetData(DataFormats.Text, text);
+                    data.SetText(BuildCfHtml(html), TextDataFormat.Html);
+                    Clipboard.SetDataObject(data, true);
+                    return;
+                }
+                Clipboard.SetText(text, TextDataFormat.UnicodeText);
+            }
+            catch
+            {
+                try { WinForms.Clipboard.SetText(text); } catch { }
+            }
         }
 
         /// <summary>Save a pasted picture beside the document (or pending, if untitled) and insert it.</summary>
