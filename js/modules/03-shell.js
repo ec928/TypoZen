@@ -2392,15 +2392,21 @@
                     editor.style.display = 'none';
                     sourceEditor.style.display = 'block';
                     state.mode = 'source';
+                    // Invalidate any pending Preview reload sticky timer so it cannot fire in Source.
+                    window.__tzPaintGen = (window.__tzPaintGen || 0) + 1;
                     applyEditorChromeForMode();
                     resizeSourceEditor();
                     postMsg("mode_changed:source");
                     // Restore immediately (not only next frame) so status/scroll match Source.
                     try { restoreStickyDocumentLine(stickyLine); } catch (eS0) {}
                     const genToSource = window.__tzPaintGen;   // see genToPreview below
+                    const caretGenToSource = window.__tzCaretGen || 0;
+                    const srcSel0 = sourceEditor ? [sourceEditor.selectionStart, sourceEditor.selectionEnd] : null;
                     requestAnimationFrame(function () {
                         try { resizeSourceEditor(); } catch (eR) {}
-                        if (window.__tzPaintGen !== genToSource) return;
+                        if (window.__tzPaintGen !== genToSource || state.mode !== 'source') return;
+                        if ((window.__tzCaretGen || 0) !== caretGenToSource) return;
+                        if (srcSel0 && sourceEditor && (sourceEditor.selectionStart !== srcSel0[0] || sourceEditor.selectionEnd !== srcSel0[1])) return;
                         try { restoreStickyDocumentLine(stickyLine); } catch (eS) {}
                     });
                 } else {
@@ -2456,12 +2462,14 @@
                     // mode first and the new tab's text after (by fetch, when large): these
                     // late restores then scrolled the NEW document to the old one's line --
                     // Source at 3904 of one file opened the other tab at 3904 (2026-09-27).
+                    try { restoreStickyDocumentLine(stickyToPreview, false, 0); } catch (eS2a) {}
                     const genToPreview = window.__tzPaintGen;
+                    const caretGenToPreview = window.__tzCaretGen || 0;
                     function restorePreviewSticky() {
-                        if (window.__tzPaintGen !== genToPreview) return;
+                        if (window.__tzPaintGen !== genToPreview || state.mode === 'source') return;
+                        if ((window.__tzCaretGen || 0) !== caretGenToPreview) return;
                         try { restoreStickyDocumentLine(stickyToPreview, false, 0); } catch (eS) {}
                     }
-                    try { restorePreviewSticky(); } catch (eS2a) {}
                     requestAnimationFrame(function () {
                         restorePreviewSticky();
                         requestAnimationFrame(function () {

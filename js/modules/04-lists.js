@@ -694,12 +694,29 @@
                         startCell = Array.prototype.indexOf.call(startBlock.querySelectorAll('td, th'), cell);
                     }
                 } catch (eCell) {}
+                // Which end the user dragged from: a menu takes the selection away, and putting
+                // it back (or keeping it through a format) must not turn it round.
+                let ends = null;
+                try {
+                    const at = function (node, off) {
+                        const b = getAncestorBlock(node);
+                        if (!b) return null;
+                        const r = document.createRange();
+                        r.selectNodeContents(b);
+                        r.setEnd(node, off);
+                        return { index: formatBlockIndex(b), offset: r.toString().length, text: b.textContent || '' };
+                    };
+                    const ea = at(sel.anchorNode, sel.anchorOffset), ef = at(sel.focusNode, sel.focusOffset);
+                    if (ea && ef && ea.index >= 0 && ef.index >= 0) ends = { a: ea, f: ef };
+                } catch (eEnds) {}
                 _mbSelFreeze = {
                     fromIdx: fromIdx,
                     toIdx: toIdx,
                     prefix: prefix,
                     suffix: suffix,
-                    startCell: startCell
+                    startCell: startCell,
+                    ends: ends,
+                    at: Date.now()
                 };
             } catch (e) {}
         }
@@ -2231,10 +2248,20 @@
          * Serialize one block's live DOM to markdown storage form (no write).
          * Shared by input sync, flush, and focused getBlockRaw.
          */
+        /**
+         * Reveal draws the active line as its Markdown: plain text, with <br> for its line
+         * breaks. A line marked active without being redrawn (a reload sets the active line
+         * directly) still shows Preview, and its text is NOT its Markdown: read as Markdown,
+         * a callout's line lost its "> " and left the box (2026-11-21).
+         */
+        function blockShowsRevealedMarkdown(block) {
+            try { return !block.querySelector(':not(br)'); } catch (e) { return true; }
+        }
+
         function serializeBlockDomToRaw(block) {
             if (!block) return '';
             try {
-                if (state.revealOnFocus) {
+                if (state.revealOnFocus && blockShowsRevealedMarkdown(block)) {
                     const t = coerceBlockRaw(block.innerText || '');
                     return (typeof isScratchHintText === 'function' && isScratchHintText(t)) ? '' : t;
                 }
@@ -2285,7 +2312,7 @@
         function getBlockRaw(block) {
             if (!block) return '';
             const focusedHere = isBlockFocused(block);
-            if (state.revealOnFocus && focusedHere) {
+            if (state.revealOnFocus && focusedHere && blockShowsRevealedMarkdown(block)) {
                 return normalizeBlockRaw(block.innerText || block.getAttribute('data-raw') || '');
             }
             const raw = block.getAttribute('data-raw');
@@ -2785,7 +2812,7 @@
             return out;
         }
 
-        function applyFormatInPlaceToSelection(type, forceOff, forceOn) {
+        function applyFormatInPlaceToSelection(type, forceOff, forceOn, fmtCap) {
             if (!editor) return false;
             const preLines = trustedFormatDocLines();
             if (!preLines) return false;
@@ -2846,6 +2873,8 @@
             // Pass caretOffset 0 so the deferred sticky restore keeps the live caret we place
             // at the end of the altered span/block for both paragraph and inline formats.
             const ok = reloadAfterFormatEdit(preLines, postLines, focusIndices, 0);
+            // A block format: the caret stays where the user put it (lines one for one).
+            if (ok && !inlinePlan && fmtCap && finishBlockFormatCaret(fmtCap, sameLineMap)) return ok;
             if (ok && currentActiveBlock) {
                 try {
                     const postEndOff = (!inlinePlan || !fzInline)
@@ -3460,6 +3489,260 @@
             return !!(editor && editor.isContentEditable);
         }
 
+        // --- Where the caret goes after a block format (Ed, 2026-11-21) -----------------
+        //
+        // The caret stays where the user put it: at the same point in the text, whatever
+        // markers the format adds or removes around it ("## ", "> ", "- ", a callout's
+        // header line). A selection keeps the same characters. Undo puts the caret (or
+        // selection) back where it was before the format, redo where it was after.
+        // Heading, Quote, Normal Text, the lists and Callout, in Preview and Source, all
+        // go through here, so there is one rule and one place that decides it.
+        //
+        // This replaced "the end of the line" (f257f86), which was itself a retreat from
+        // carets that landed at the start of the line or elsewhere: several paths placed
+        // the caret, and a reload's deferred restore then moved it again. A point is
+        // { index, offset, text }: the line (model line in Preview, line of the file in
+        // Source), the offset in the text that line showed when the point was taken, and
+        // that text. After the change, the line maps to its new line, and the offset maps
+        // through the difference between the old and new text (formatCaretMapOffset).
+
+        const BLOCK_FORMAT_TYPES = { h1: 1, h2: 1, h3: 1, h4: 1, h5: 1, h6: 1, quote: 1, list: 1, ol: 1, ordered: 1, checklist: 1, para: 1 };
+
+        /**
+         * An offset in oldText, in newText: characters both share at the start keep their
+         * offset, characters both share at the end keep their distance from the end, and an
+         * offset inside the text that changed lands where the shared end begins -- where the
+         * user's own text resumes. "Title" -> "## Title": 0 -> 3. "#|# Title" -> "Title": 0.
+         */
+        // The block markers at the start of a line as Source and Reveal show it: headings,
+        // quotes, list and task markers, a callout's [!KIND].
+        const FORMAT_MARKER_RE = /^(?:[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+(?:\[[ xX]\][ \t]+)?|\d+[.)][ \t]+|\[![A-Za-z]+\][ \t]*))*/;
+
+        function formatCaretMapOffset(oldText, newText, off) {
+            const a = String(oldText == null ? '' : oldText), b = String(newText == null ? '' : newText);
+            off = Math.max(0, Math.min(a.length, off | 0));
+            if (a === b) return off;
+            // Anywhere up to the end of the line's markers -- before "1. " or inside "##" --
+            // is the start of the text, and stays the start of the text: "|1. item" as
+            // Heading 2 is "## |item", as "|Title" is "## |Title".
+            const m0 = a.match(FORMAT_MARKER_RE)[0].length, m1 = b.match(FORMAT_MARKER_RE)[0].length;
+            if (off <= m0) return m1;
+            const max = Math.min(a.length, b.length);
+            let p = 0;
+            while (p < max && a.charCodeAt(p) === b.charCodeAt(p)) p++;
+            let s = 0;
+            while (s < max - p && a.charCodeAt(a.length - 1 - s) === b.charCodeAt(b.length - 1 - s)) s++;
+            let out;
+            if (off >= a.length - s) out = off + (b.length - a.length);
+            else if (off <= p) out = off;
+            else out = b.length - s;
+            return Math.max(out, m1);
+        }
+
+        /** The text a Preview point's offset counts in: the line as the page shows it now. */
+        function formatPointLiveText(index) {
+            return visibleTextOfModelLine(index);
+        }
+
+        /** Where the caret (or selection) is now, as two points; null when it is not known. */
+        function captureFormatPoints() {
+            try {
+                if (state.mode === 'source') {
+                    if (!sourceEditor) return null;
+                    const v = String(sourceEditor.value || '');
+                    const pt = function (pos) {
+                        pos = Math.max(0, Math.min(v.length, pos | 0));
+                        const ls = v.lastIndexOf('\n', pos - 1) + 1;
+                        let le = v.indexOf('\n', pos);
+                        if (le < 0) le = v.length;
+                        let line = 0;
+                        for (let i = 0; i < ls; i++) if (v.charCodeAt(i) === 10) line++;
+                        return { index: line, offset: pos - ls, text: v.slice(ls, le) };
+                    };
+                    const s = sourceEditor.selectionStart | 0, e = sourceEditor.selectionEnd | 0;
+                    const back = sourceEditor.selectionDirection === 'backward';
+                    return { mode: 'source', a: pt(back ? e : s), f: pt(back ? s : e), start: s, end: e, back: back };
+                }
+                if (!editor) return null;
+                const targets = getSelectedBlockIndices();
+                const inTargets = function (i) { return targets.indexOf(i) >= 0; };
+                // A selection remembered across the mounted window's edge: its true ends.
+                try {
+                    if (typeof rememberedFreezeStandsForSelection === 'function' && rememberedFreezeStandsForSelection()
+                        && _mbSelFreeze && _mbSelFreeze.anchor && _mbSelFreeze.focus) {
+                        const fa = _mbSelFreeze.anchor, ff = _mbSelFreeze.focus;
+                        return { mode: 'wysiwyg',
+                            a: { index: fa.index, offset: fa.offset, text: formatPointLiveText(fa.index) },
+                            f: { index: ff.index, offset: ff.offset, text: formatPointLiveText(ff.index) } };
+                    }
+                } catch (eRf) {}
+                // The live selection, when the page still has it in a line.
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount && sel.anchorNode && editor.contains(sel.anchorNode)) {
+                    const live = function (node, offset) {
+                        const b = getAncestorBlock(node);
+                        if (!b || !editor.contains(b)) return null;
+                        const i = formatBlockIndex(b);
+                        if (!(i >= 0)) return null;
+                        const pre = document.createRange();
+                        pre.selectNodeContents(b);
+                        pre.setEnd(node, offset);
+                        return { index: i, offset: pre.toString().length, text: b.textContent || '' };
+                    };
+                    const a = live(sel.anchorNode, sel.anchorOffset), f = live(sel.focusNode, sel.focusOffset);
+                    if (a && f && inTargets(a.index) && inTargets(f.index)) return { mode: 'wysiwyg', a: a, f: f };
+                }
+                // A menu took the keyboard: what the page remembered when it still had it.
+                const fz = _mbSelFreeze;
+                if (fz && fz.fromIdx !== fz.toIdx && targets.length > 1
+                    && fz.fromIdx === Math.min.apply(null, targets) && fz.toIdx === Math.max.apply(null, targets)) {
+                    const fe = (fz.anchor && fz.focus) ? { a: fz.anchor, f: fz.focus } : fz.ends;
+                    if (fe && fe.a && fe.f) {
+                        return { mode: 'wysiwyg',
+                            a: { index: fe.a.index, offset: fe.a.offset, text: fe.a.text != null ? fe.a.text : formatPointLiveText(fe.a.index) },
+                            f: { index: fe.f.index, offset: fe.f.offset, text: fe.f.text != null ? fe.f.text : formatPointLiveText(fe.f.index) } };
+                    }
+                    const ta = formatPointLiveText(fz.fromIdx), tf = formatPointLiveText(fz.toIdx);
+                    return { mode: 'wysiwyg',
+                        a: { index: fz.fromIdx, offset: String(fz.prefix || '').length, text: ta },
+                        f: { index: fz.toIdx, offset: Math.max(0, tf.length - String(fz.suffix || '').length), text: tf } };
+                }
+                const mem = _editorCaretMemory;
+                if (mem && mem.kind === 'preview' && inTargets(mem.index)) {
+                    const t = mem.text != null ? mem.text : formatPointLiveText(mem.index);
+                    return { mode: 'wysiwyg',
+                        a: { index: mem.index, offset: mem.start | 0, text: t },
+                        f: { index: mem.index, offset: mem.end != null ? (mem.end | 0) : (mem.start | 0), text: t } };
+                }
+            } catch (e) {}
+            return null;
+        }
+
+        /**
+         * A point taken before the change, in the document after it. lineMap(index) gives
+         * { from, to } (the new line, or the lines one line became when it was split) or
+         * { index, gone: true } (its line went: the point goes to the start of that line).
+         */
+        function mapFormatPoint(p, lineMap, newLineText) {
+            const m = lineMap(p.index);
+            if (!m) return null;
+            if (m.gone) return { index: m.index, offset: 0, text: null };
+            if (m.to == null || m.to === m.from) return { index: m.from, offset: p.offset, text: p.text };
+            // One line became several (a line with Shift+Enter breaks): find the piece.
+            const parts = [];
+            for (let j = m.from; j <= m.to; j++) parts.push(String(newLineText(j) || ''));
+            let off = formatCaretMapOffset(p.text, parts.join('\n'), p.offset);
+            for (let k = 0; k < parts.length; k++) {
+                if (off <= parts[k].length || k === parts.length - 1) {
+                    return { index: m.from + k, offset: Math.min(off, parts[k].length), text: parts[k] };
+                }
+                off -= parts[k].length + 1;
+            }
+            return null;
+        }
+
+        /**
+         * Put the caret (a == f) or the selection on Preview points { index, offset, text },
+         * each offset counted in its `text` and mapped into what the line shows once it is
+         * active (Reveal shows the active line's Markdown). Returns the points placed, in
+         * the text the lines show now, or null.
+         */
+        function placePreviewFormatPoints(a, f) {
+            if (!editor || !a || !f) return null;
+            // Mount the anchor's line (scroll, page) and make it the active line first: with
+            // Reveal on, that redraws it as Markdown, which the offsets are then mapped into.
+            if (typeof placePreviewCaretMemory === 'function'
+                && !placePreviewCaretMemory({ kind: 'preview', index: a.index, start: 0, end: 0 })) return null;
+            try { updateActiveBlock(); } catch (eAb) {}
+            const live = function (p) {
+                const now = formatPointLiveText(p.index);
+                const off = p.text == null ? Math.min(p.offset | 0, now.length) : formatCaretMapOffset(p.text, now, p.offset);
+                return { index: p.index, offset: off, text: now };
+            };
+            const la = live(a), lf = (f.index === a.index && f.offset === a.offset && f.text === a.text) ? la : live(f);
+            if (!setRememberedSelection({ index: la.index, offset: la.offset }, { index: lf.index, offset: lf.offset })) return null;
+            try { updateActiveBlock(); } catch (eAb2) {}
+            if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
+            return { a: la, f: lf };
+        }
+
+        // The caret a block format just placed, for a reload's deferred restore to put back
+        // if the remount lost it (restoreStickyDocumentLine). Briefly: it is not a memory.
+        let _pendingFormatCaret = null;
+        function placePendingFormatCaret() {
+            const p = _pendingFormatCaret;
+            // Only for the reload the format made: a later load (an undo, another edit) is not it.
+            if (!p || Date.now() - p.at > 1500 || state.mode === 'source' || p.gen !== window.__tzPaintGen) return false;
+            return !!placePreviewFormatPoints(p.a, p.f);
+        }
+        window.placePendingFormatCaret = placePendingFormatCaret;
+
+        /**
+         * After a block format: put the caret or selection taken before it (cap) where the
+         * rule says, and stamp undo with the points before and redo with the points after.
+         * lineMap as in mapFormatPoint. False when the points could not be placed.
+         */
+        function finishBlockFormatCaret(cap, lineMap) {
+            if (!cap) return false;
+            try {
+                if (cap.mode === 'source') {
+                    if (state.mode !== 'source' || !sourceEditor) return false;
+                    const v = String(sourceEditor.value || '');
+                    const lines = v.split('\n');
+                    const lineText = function (j) { return lines[j] == null ? '' : lines[j]; };
+                    const at = function (p) {
+                        const q = mapFormatPoint(p, lineMap, lineText);
+                        if (!q) return null;
+                        const li = Math.max(0, Math.min(lines.length - 1, q.index));
+                        const now = lineText(li);
+                        const col = q.text == null ? 0 : formatCaretMapOffset(q.text, now, q.offset);
+                        let pos = 0;
+                        for (let i = 0; i < li; i++) pos += lines[i].length + 1;
+                        return pos + Math.min(col, now.length);
+                    };
+                    const pa = at(cap.a), pf = at(cap.f);
+                    if (pa == null || pf == null) return false;
+                    sourceEditor.setSelectionRange(Math.min(pa, pf), Math.max(pa, pf), pf < pa ? 'backward' : 'forward');
+                    _editorCaretMemory = { kind: 'source', start: Math.min(pa, pf), end: Math.max(pa, pf) };
+                    // Undo: the selection as it was. Redo: as it is now.
+                    if (typeof HistoryManager.setTopCarets === 'function') {
+                        HistoryManager.setTopCarets(
+                            { mode: 'source', start: Math.min(pa, pf), end: Math.max(pa, pf), exact: true,
+                                dir: pf < pa ? 'backward' : 'forward' },
+                            { mode: 'source', start: cap.start | 0, end: cap.end | 0, exact: true,
+                                dir: cap.back ? 'backward' : 'forward' });
+                    }
+                    return true;
+                }
+                if (state.mode === 'source') return false;
+                const ma = mapFormatPoint(cap.a, lineMap, formatPointLiveText);
+                const mf = (cap.f === cap.a) ? ma : mapFormatPoint(cap.f, lineMap, formatPointLiveText);
+                if (!ma || !mf) return false;
+                const placed = placePreviewFormatPoints(ma, mf);
+                if (!placed) return false;
+                _pendingFormatCaret = { a: placed.a, f: placed.f, at: Date.now(), gen: window.__tzPaintGen };
+                _formatSelectionFrozen = false;
+                _selectedFormatRaws = {};
+                _inlineSelCache = null;
+                try { snapshotFormatSelectionFromEditor(); } catch (eSn) {}
+                try { snapshotMultiBlockSelectionFromLive(); } catch (eMb) {}
+                if (typeof HistoryManager !== 'undefined' && typeof HistoryManager.setTopCarets === 'function') {
+                    const caretOf = function (pts) {
+                        return { mode: 'wysiwyg', blockIndex: pts.f.index, offset: pts.f.offset,
+                            anchorIndex: pts.a.index, exact: true, pts: { a: pts.a, f: pts.f } };
+                    };
+                    HistoryManager.setTopCarets(caretOf(placed), caretOf(cap));
+                }
+                return true;
+            } catch (e) {
+                try { window.tzLogException('finishBlockFormatCaret', e); } catch (eL) {}
+                return false;
+            }
+        }
+
+        /** Lines kept one for one: line i is line i. */
+        function sameLineMap(i) { return { from: i }; }
+
         function applyFormatting(type) {
             // A read-only view takes no formatting. The menus are greyed there, but the
             // shortcuts went straight through: Ctrl+B (since long before 0.21) and Ctrl+2
@@ -3473,6 +3756,8 @@
             // Markdown formatting has no meaning in a code file: H2 on a C# line wrote "## "
             // into the code. The controls are greyed there too; this covers the shortcuts.
             if (!takesMarkdownFormatting()) return;
+            // Where the caret is, before anything moves it (finishBlockFormatCaret).
+            const fmtCap = BLOCK_FORMAT_TYPES[type] ? captureFormatPoints() : null;
             if (/^callout:/.test(String(type))) {
                 applyCallout(String(type).slice(8));
                 return;
@@ -3578,6 +3863,11 @@
                 HistoryManager.commitEdit();
                 const postEnd = s + out.length;
                 const isBlockSrc = !!blockTypes[type];
+                // The caret stays where the user put it (lines are kept one for one).
+                if (isBlockSrc && finishBlockFormatCaret(fmtCap, sameLineMap)) {
+                    if (typeof _sourceFormatSel !== 'undefined') _sourceFormatSel = null;
+                    return;
+                }
                 if (typeof HistoryManager.setTopCarets === 'function') {
                     const rc = { mode: 'source', start: postEnd, end: postEnd, exact: true };
                     const uc = { mode: 'source', start: e, end: e, exact: true };
@@ -3690,7 +3980,7 @@
              */
             if (isListType || targets.length > 1 || virtMulti || modelOnly
                 || (selectedModelIdx && selectedModelIdx.length > 1)) {
-                applyFormatInPlaceToSelection(type, forceOff, forceOn);
+                applyFormatInPlaceToSelection(type, forceOff, forceOn, fmtCap);
                 return;
             }
 
@@ -3713,6 +4003,8 @@
             // block(s) rather than splitting mid-paragraph on a partial selection (Ed, 2026-11-21).
 
             let olNum = 1;
+            // A line with Shift+Enter breaks becomes one line per piece: which, and how many.
+            let splitAt = -1, splitPieces = 0;
             for (let i = 0; i < targets.length; i++) {
                 const block = targets[i];
                 // Use safe raw — getBlockRaw alone is often empty after toolbar focus steal
@@ -3721,8 +4013,11 @@
                 // Multi-line blob in one block (Shift+Enter etc.): format line(s) at caret/selection only
                 if (String(raw).indexOf('\n') >= 0 && targets.length === 1
                     && (isHeading || type === 'quote')) {
+                    const at = formatBlockIndex(block);
                     const lineBlocks = formatLinesInBlock(block, type, { forceOff, forceOn, olNum });
                     if (lineBlocks) {
+                        splitAt = at;
+                        splitPieces = String(raw).split('\n').length;
                         targets = lineBlocks;
                         break;
                     }
@@ -3765,6 +4060,12 @@
             updateStats();
             updateOutline();
             HistoryManager.commitEdit();
+            // The caret stays where the user put it.
+            if (fmtCap && finishBlockFormatCaret(fmtCap, function (i) {
+                if (splitAt < 0 || i < splitAt) return { from: i };
+                if (i === splitAt) return { from: i, to: i + splitPieces - 1 };
+                return { from: i + splitPieces - 1 };
+            })) return;
             try {
                 const postBi = formatBlockIndex(currentActiveBlock);
                 const firstPostBi = targets.length ? formatBlockIndex(targets[0]) : -1;
@@ -3895,8 +4196,31 @@
                 focus: [header, header + body.length], action: 'insert' };
         }
 
+        /**
+         * Where each line goes when a callout plan is applied, for finishBlockFormatCaret.
+         * The box's lines keep their order; a header that goes takes the caret to the start
+         * of the line now in its place (or to its title, kept as a line).
+         */
+        function calloutLineMap(plan) {
+            const delta = plan.lines.length - (plan.end - plan.start);
+            return function (i) {
+                if (i < plan.start) return { from: i };
+                if (i >= plan.end) return { from: i + delta };
+                if (plan.action === 'retype') return { from: i };
+                if (plan.action === 'insert') {
+                    const lead = plan.lines.length && plan.lines[0] === '' ? 1 : 0;
+                    return { from: plan.start + lead + 1 + (i - plan.start) };
+                }
+                // remove: plan.start was the header, the rest were its lines.
+                const title = plan.lines.length > (plan.end - plan.start - 1) ? 1 : 0;
+                if (i === plan.start) return title ? { from: plan.start } : { index: plan.start, gone: true };
+                return { from: plan.start + title + (i - plan.start - 1) };
+            };
+        }
+
         /** Callout > <kind> on the selected lines, in Preview or Source. */
         function applyCallout(kind) {
+            const fmtCap = captureFormatPoints();
             if (state.mode === 'source') {
                 if (!sourceEditor) return false;
                 sourceEditor.focus();
@@ -3943,6 +4267,10 @@
                 resizeSourceEditor();
                 updateStats();
                 HistoryManager.commitEdit();
+                if (finishBlockFormatCaret(fmtCap, calloutLineMap(plan))) {
+                    if (typeof _sourceFormatSel !== 'undefined') _sourceFormatSel = null;
+                    return true;
+                }
                 if (typeof HistoryManager.setTopCarets === 'function') {
                     HistoryManager.setTopCarets(
                         { mode: 'source', start: postCaretPos, end: postCaretPos, endOfBlock: true, exact: true },
@@ -3978,7 +4306,8 @@
             }
             if (!Object.keys(focusIndices).length) focusIndices[Math.min(plan.start, postLines.length - 1)] = true;
             if (!reloadAfterFormatEdit(preLines, postLines, focusIndices, 0)) return false;
-            // The caret goes to the end of the box's last line, ready to type into it.
+            // The caret stays where the user put it.
+            if (finishBlockFormatCaret(fmtCap, calloutLineMap(plan))) return true;
             try {
                 const el = mountedBlockAtFormatIndex(plan.focus[1]);
                 if (el) {
@@ -4482,7 +4811,7 @@
                         if (s > n) s = n;
                         if (e > n) e = n;
                         sourceEditor.focus();
-                        sourceEditor.setSelectionRange(s, e);
+                        sourceEditor.setSelectionRange(s, e, caret.dir === 'backward' ? 'backward' : 'forward');
                         if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
                         if (typeof resizeSourceEditor === 'function') {
                             try { resizeSourceEditor(); } catch (e2) {}
@@ -4551,6 +4880,10 @@
                         if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
                     } catch (e3) {
                         focusEditorNoScroll();
+                    }
+                    // A block format's undo or redo: the caret or selection exactly as it was.
+                    if (caret.pts && caret.pts.a && caret.pts.f) {
+                        try { placePreviewFormatPoints(caret.pts.a, caret.pts.f); } catch (ePts) {}
                     }
                     try {
                         // Prefer main-container geometry under virt; scrollIntoView as backup
@@ -5040,13 +5373,18 @@
                     if (caret) {
                         const self = this;
                         const cFinal = caret;
-                        // After loadMarkdownContent DOM is ready; rAF helps focus stick
+                        this._restoreCaret(cFinal, keepTop);
+                        if (!exactCaret) this._caretAtChange(cFinal.blockIndex, beforeText, dir);
+                        const rGen = window.__tzPaintGen;
+                        const rMode = state.mode;
+                        const rCaretGen = window.__tzCaretGen || 0;
+                        // After loadMarkdownContent DOM is ready; rAF helps focus stick unless superseded
                         requestAnimationFrame(function () {
+                            if (window.__tzPaintGen !== rGen || state.mode !== rMode) return;
+                            if ((window.__tzCaretGen || 0) !== rCaretGen) return;
                             self._restoreCaret(cFinal, keepTop);
                             if (!exactCaret) self._caretAtChange(cFinal.blockIndex, beforeText, dir);
                         });
-                        this._restoreCaret(cFinal, keepTop);
-                        if (!exactCaret) this._caretAtChange(cFinal.blockIndex, beforeText, dir);
                     } else if (state.mode !== 'source' && editor && editor.firstElementChild) {
                         currentActiveBlock = editor.firstElementChild;
                     }

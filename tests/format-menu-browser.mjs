@@ -154,58 +154,42 @@ try {
     await settled(page);
     same('Ctrl+Alt+2 (AltGr) changes nothing', await saved(), 'Title line\nSecond');
 
-    console.log('\n=== every paragraph format puts a collapsed caret at the end of the block ===');
-    const caretAtStart = () => page.evaluate(() => {
+    // The caret stays where the user put it (Ed, 2026-11-21; it went to the end of the line
+    // until 0.21.16). tests/caret-stays-browser.mjs attacks the rule; these are the plain cases.
+    console.log('\n=== every paragraph format leaves the caret where it was ===');
+    const caretAt5 = () => page.evaluate(() => {
         const el = document.querySelector('#editor .block[data-model-index="0"]');
-        focusBlock(el, 0);
+        focusBlock(el, 5);
     });
     const isCaretCollapsed = () => page.evaluate(() => { const s = getSelection(); return !!s && s.isCollapsed; });
+    // The selection's two ends as line:offset in the text the line shows.
+    const selEnds = () => page.evaluate(() => {
+        const s = getSelection();
+        const pt = (n, o) => {
+            const b = n && getAncestorBlock(n);
+            if (!b) return 'none';
+            const r = document.createRange(); r.selectNodeContents(b); r.setEnd(n, o);
+            return b.getAttribute('data-model-index') + ':' + r.toString().length;
+        };
+        return s.rangeCount ? pt(s.anchorNode, s.anchorOffset) + '..' + pt(s.focusNode, s.focusOffset) : 'none';
+    });
 
-    await load('Keep this heading\nSecond');
-    await caretAtStart();
-    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('h2'); });
-    await settled(page);
-    same('heading from offset 0 leaves a collapsed caret', await isCaretCollapsed(), true);
-    await page.keyboard.type('!');
-    await settled(page);
-    same('typing after heading appends at the end', await saved(), '## Keep this heading!\nSecond');
-
-    await load('Keep this quote\nSecond');
-    await caretAtStart();
-    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('quote'); });
-    await settled(page);
-    same('quote from offset 0 leaves a collapsed caret', await isCaretCollapsed(), true);
-    await page.keyboard.type('!');
-    await settled(page);
-    same('typing after quote appends at the end', await saved(), '> Keep this quote!\nSecond');
-
-    await load('## Keep this normal\nSecond');
-    await caretAtStart();
-    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('para'); });
-    await settled(page);
-    same('normal text from offset 0 leaves a collapsed caret', await isCaretCollapsed(), true);
-    await page.keyboard.type('!');
-    await settled(page);
-    same('typing after normal text appends at the end', await saved(), 'Keep this normal!\nSecond');
-
-    await load('Keep this callout\nSecond');
-    await caretAtStart();
-    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('callout:note'); });
-    await settled(page);
-    same('callout from offset 0 leaves a collapsed caret', await isCaretCollapsed(), true);
-    await page.keyboard.type('!');
-    await settled(page);
-    same('typing after callout appends at the end', await saved(), '> [!NOTE]\n> Keep this callout!\n\nSecond');
-
-    await load('Keep this list\nSecond');
-    await caretAtStart();
-    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('list'); });
-    await settled(page);
-    await new Promise(r => setTimeout(r, 60));
-    same('list from offset 0 leaves a collapsed caret', await isCaretCollapsed(), true);
-    await page.keyboard.type('!');
-    await settled(page);
-    same('typing after list appends at the end', await saved(), '- Keep this list!\nSecond');
+    for (const [cmd, doc, want] of [
+        ['h2', 'Keep this heading\nSecond', '## Keep !this heading\nSecond'],
+        ['quote', 'Keep this quote\nSecond', '> Keep !this quote\nSecond'],
+        ['para', '## Keep this normal\nSecond', 'Keep !this normal\nSecond'],
+        ['callout:note', 'Keep this callout\nSecond', '> [!NOTE]\n> Keep !this callout\n\nSecond'],
+        ['list', 'Keep this list\nSecond', '- Keep !this list\nSecond']
+    ]) {
+        await load(doc);
+        await caretAt5();
+        await page.evaluate((c) => { freezeFormatSelection(); applyFormatting(c); }, cmd);
+        await settled(page);
+        same(cmd + ' leaves a collapsed caret', await isCaretCollapsed(), true);
+        await page.keyboard.type('!');
+        await settled(page);
+        same(cmd + ': the next letter goes where the caret was, five characters in', await saved(), want);
+    }
 
     await load('First line\nSecond line');
     await page.evaluate(() => {
@@ -218,53 +202,31 @@ try {
     });
     await page.evaluate(() => { freezeFormatSelection(); applyFormatting('h2'); });
     await settled(page);
-    await new Promise(r => setTimeout(r, 60));
-    same('multi-block heading leaves a collapsed caret', await isCaretCollapsed(), true);
+    same('multi-block heading keeps the selection', await selEnds(), '0:0..1:11');
+    await page.keyboard.press('ArrowRight');
     await page.keyboard.type('!');
     await settled(page);
-    same('typing after multi-block heading appends to the last altered block', await saved(), '## First line\n## Second line!');
+    same('and it is the selection: Right goes to its end', await saved(), '## First line\n## Second line!');
 
-    await load('Before part after');
-    await page.evaluate(() => {
-        const el = document.querySelector('#editor .block[data-model-index="0"]');
-        const t = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode();
-        const r = document.createRange(); r.setStart(t, 7); r.setEnd(t, 11);
-        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
-    });
-    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('h2'); });
-    await settled(page);
-    same('partial selection + heading leaves a collapsed caret', await isCaretCollapsed(), true);
-    await page.keyboard.type('!');
-    await settled(page);
-    same('partial selection + heading formats the entire block and appends at the end', await saved(), '## Before part after!');
-
-    await load('Before part after');
-    await page.evaluate(() => {
-        const el = document.querySelector('#editor .block[data-model-index="0"]');
-        const t = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode();
-        const r = document.createRange(); r.setStart(t, 7); r.setEnd(t, 11);
-        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
-    });
-    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('quote'); });
-    await settled(page);
-    same('partial selection + quote leaves a collapsed caret', await isCaretCollapsed(), true);
-    await page.keyboard.type('!');
-    await settled(page);
-    same('partial selection + quote formats the entire block and appends at the end', await saved(), '> Before part after!');
-
-    await load('## Before part after');
-    await page.evaluate(() => {
-        const el = document.querySelector('#editor .block[data-model-index="0"]');
-        const t = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode();
-        const r = document.createRange(); r.setStart(t, 7); r.setEnd(t, 11);
-        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
-    });
-    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('quote'); });
-    await settled(page);
-    same('partial selection in heading + quote leaves a collapsed caret', await isCaretCollapsed(), true);
-    await page.keyboard.type('!');
-    await settled(page);
-    same('partial selection in heading + quote converts the entire block and appends at the end', await saved(), '> Before part after!');
+    for (const [cmd, doc, want] of [
+        ['h2', 'Before part after', '## Before ! after'],
+        ['quote', 'Before part after', '> Before ! after'],
+        ['quote', '## Before part after', '> Before ! after']
+    ]) {
+        await load(doc);
+        await page.evaluate(() => {
+            const el = document.querySelector('#editor .block[data-model-index="0"]');
+            const t = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode();
+            const r = document.createRange(); r.setStart(t, 7); r.setEnd(t, 11);
+            const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+        });
+        await page.evaluate((c) => { freezeFormatSelection(); applyFormatting(c); }, cmd);
+        await settled(page);
+        same('partial selection in "' + doc + '" + ' + cmd + ' keeps the same word selected', await selEnds(), '0:7..0:11');
+        await page.keyboard.type('!');
+        await settled(page);
+        same('partial selection in "' + doc + '" + ' + cmd + ' formats the whole line; typing replaces the word', await saved(), want);
+    }
 
     await load('Source heading\nSecond', 'md', 'source');
     await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(0, 0); });
@@ -273,17 +235,17 @@ try {
     same('Source heading leaves a collapsed caret', await page.evaluate(() => sourceEditor.selectionStart === sourceEditor.selectionEnd), true);
     await page.keyboard.type('!');
     await settled(page);
-    same('typing after Source heading appends at the end', await saved(), '## Source heading!\nSecond');
+    same('Source: a caret at the start of the line stays at the start of its text', await saved(), '## !Source heading\nSecond');
 
     await load('Chain test');
-    await caretAtStart();
+    await caretAt5();
     await page.evaluate(() => { freezeFormatSelection(); applyFormatting('h2'); });
     await settled(page);
     await page.evaluate(() => { freezeFormatSelection(); applyFormatting('callout:note'); });
     await settled(page);
     same('chained menu format sees updated block rather than stale freeze', await saved(), '> [!NOTE]\n> ## Chain test');
 
-    console.log('\n=== Undo and Redo of paragraph formats keep a collapsed caret at the end of the block ===');
+    console.log('\n=== Undo puts the caret back where it was before a paragraph format, Redo where it was after ===');
     const DOC_U = 'First line\nSecond line here\nThird line';
     const settleQuick = async () => {
         await page.evaluate(() => {
@@ -336,9 +298,9 @@ try {
         const s = getSelection(); s.removeAllRanges(); s.addRange(r);
         snapshotFormatSelectionFromEditor();
     }, bi0, bi1);
-    const checkEndCaret = (st, wantIdx, label) => {
-        same(label + ' collapsed at end of block ' + wantIdx,
-            st.collapsed && st.blkIdx === String(wantIdx) && st.off && st.off[0] === st.blkLen && st.off[1] === st.blkLen,
+    const checkCaret = (st, wantIdx, wantOff, label) => {
+        same(label + ' collapsed at ' + wantIdx + ':' + wantOff,
+            st.collapsed && st.blkIdx === String(wantIdx) && st.off && st.off[0] === wantOff && st.off[1] === wantOff,
             true);
     };
 
@@ -359,15 +321,15 @@ try {
         await page.evaluate(() => HistoryManager.undo());
         await settleQuick();
         same(cmd + ' Undo restores preDoc', await saved(), preDoc);
-        checkEndCaret(await undoSnap(), wantUndoIdx, cmd + ' Undo');
+        checkCaret(await undoSnap(), wantUndoIdx, 5, cmd + ' Undo');
         await page.evaluate(() => HistoryManager.redo());
         await settleQuick();
         same(cmd + ' Redo restores postDoc', await saved(), wantPostDoc);
-        checkEndCaret(await undoSnap(), wantRedoIdx, cmd + ' Redo');
+        checkCaret(await undoSnap(), wantRedoIdx, 5, cmd + ' Redo');
         await page.keyboard.type('!');
         await settleQuick();
-        same(cmd + ' typing after Redo appends at end of block', await saved(),
-            wantPostDoc.replace('Second line here', 'Second line here!'));
+        same(cmd + ' typing after Redo goes in at the caret', await saved(),
+            wantPostDoc.replace('Second line here', 'Secon!d line here'));
     }
 
     for (const [cmd, wantRedoIdx, wantPostDoc] of [
@@ -382,10 +344,11 @@ try {
         await settleQuick();
         await page.evaluate(() => HistoryManager.undo());
         await settleQuick();
-        checkEndCaret(await undoSnap(), 1, 'multi ' + cmd + ' Undo');
+        same('multi ' + cmd + ' Undo restores the selection', await selEnds(), '0:0..1:16');
         await page.evaluate(() => HistoryManager.redo());
         await settleQuick();
-        checkEndCaret(await undoSnap(), wantRedoIdx, 'multi ' + cmd + ' Redo');
+        same('multi ' + cmd + ' Redo restores the selection after the format', await selEnds(),
+            (wantRedoIdx - 1) + ':0..' + wantRedoIdx + ':16');
         same('multi ' + cmd + ' Redo doc', await saved(), wantPostDoc);
     }
 
@@ -396,15 +359,15 @@ try {
         await settleQuick();
         await page.evaluate(() => HistoryManager.undo());
         await settleQuick();
-        checkEndCaret(await undoSnap(), 1, 'partial ' + cmd + ' Undo');
+        same('partial ' + cmd + ' Undo restores the word selected', await selEnds(), '1:7..1:11');
         await page.evaluate(() => HistoryManager.redo());
         await settleQuick();
-        checkEndCaret(await undoSnap(), wantRedoIdx, 'partial ' + cmd + ' Redo');
+        same('partial ' + cmd + ' Redo selects the same word', await selEnds(), wantRedoIdx + ':7..' + wantRedoIdx + ':11');
         await page.evaluate(() => HistoryManager.undo());
         await settleQuick();
         await page.keyboard.type('!');
         await settleQuick();
-        same('partial ' + cmd + ' typing after Undo appends at end', await saved(), 'First line\nSecond line here!\nThird line');
+        same('partial ' + cmd + ' typing after Undo replaces the selected word', await saved(), 'First line\nSecond ! here\nThird line');
     }
 
     await loadQuick(DOC_U);
@@ -425,24 +388,26 @@ try {
     await settleQuick();
     await page.evaluate(() => HistoryManager.undo());
     await settleQuick();
+    // 16 is "Secon|d": after "## " it is 19.
     const srcH2U = await undoSnap();
-    same('Source h2 Undo places caret at end of restored line (27)', srcH2U.start === 27 && srcH2U.end === 27, true);
+    same('Source h2 Undo puts the caret back where it was (16)', srcH2U.start === 16 && srcH2U.end === 16, true);
     await page.evaluate(() => HistoryManager.redo());
     await settleQuick();
     const srcH2R = await undoSnap();
-    same('Source h2 Redo places caret at end of heading line (30)', srcH2R.start === 30 && srcH2R.end === 30, true);
+    same('Source h2 Redo puts it at the same point in the heading (19)', srcH2R.start === 19 && srcH2R.end === 19, true);
 
     await loadQuick(DOC_U, 'md', 'source');
     await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(16, 16); applyFormatting('callout:note'); });
     await settleQuick();
     await page.evaluate(() => HistoryManager.undo());
     await settleQuick();
+    // After "> [!NOTE]\n" and "> ", "Secon|d" is at 11 + 10 + 2 + 5 = 28.
     const srcCoU = await undoSnap();
-    same('Source callout Undo places caret at end of restored line (27)', srcCoU.start === 27 && srcCoU.end === 27, true);
+    same('Source callout Undo puts the caret back where it was (16)', srcCoU.start === 16 && srcCoU.end === 16, true);
     await page.evaluate(() => HistoryManager.redo());
     await settleQuick();
     const srcCoR = await undoSnap();
-    same('Source callout Redo places caret at end of body line (39)', srcCoR.start === 39 && srcCoR.end === 39, true);
+    same('Source callout Redo puts it at the same point in the box (28)', srcCoR.start === 28 && srcCoR.end === 28, true);
 
     // 1. Cross-mode Undo / Redo (Source <-> Preview)
     await loadQuick(DOC_U, 'md', 'source');
@@ -458,15 +423,15 @@ try {
         return document.activeElement === ed || (ed && ed.contains(document.activeElement));
     });
     same('Source h2 -> Preview Undo focuses Preview editor (not hidden Source)', s2pEdActive, true);
-    checkEndCaret(s2pU, 1, 'Source h2 -> Preview Undo');
+    checkCaret(s2pU, 1, 5, 'Source h2 -> Preview Undo');
     await page.evaluate(() => HistoryManager.redo());
     await settleQuick();
-    checkEndCaret(await undoSnap(), 1, 'Source h2 -> Preview Redo');
+    checkCaret(await undoSnap(), 1, 5, 'Source h2 -> Preview Redo');
     await page.evaluate(() => HistoryManager.undo());
     await settleQuick();
     await page.keyboard.type('!');
     await settleQuick();
-    same('Source h2 -> Preview Undo then typing appends at end', await saved(), 'First line\nSecond line here!\nThird line');
+    same('Source h2 -> Preview Undo then typing goes in at the caret', await saved(), 'First line\nSecon!d line here\nThird line');
 
     await loadQuick('Alpha beta', 'md', 'source');
     await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(10, 10); });
@@ -486,7 +451,7 @@ try {
     await settleQuick();
     same('Source typing -> Preview Undo then typing works in Preview', await saved(), 'Alpha beta!');
 
-    for (const [cmd, wantRedoStart] of [['h2', 30], ['callout:note', 39]]) {
+    for (const [cmd, wantRedoStart] of [['h2', 19], ['callout:note', 28]]) {
         await loadQuick(DOC_U, 'md', 'wysiwyg');
         await focusAt(1, 5);
         await page.evaluate((c) => { freezeFormatSelection(); applyFormatting(c); }, cmd);
@@ -496,13 +461,50 @@ try {
         await page.evaluate(() => HistoryManager.undo());
         await settleQuick();
         const p2sU = await undoSnap();
-        same('Preview ' + cmd + ' -> Source Undo places caret at end of restored line (27)', p2sU.start === 27 && p2sU.end === 27, true);
+        same('Preview ' + cmd + ' -> Source Undo puts the caret back where it was (16)', p2sU.start === 16 && p2sU.end === 16, true);
         await page.evaluate(() => HistoryManager.redo());
         await settleQuick();
         const p2sR = await undoSnap();
-        same('Preview ' + cmd + ' -> Source Redo places caret at end of formatted line (' + wantRedoStart + ')',
+        same('Preview ' + cmd + ' -> Source Redo puts it at the same point in the formatted line (' + wantRedoStart + ')',
             p2sR.start === wantRedoStart && p2sR.end === wantRedoStart, true);
     }
+
+    // Regression: late sticky-restore timers across mode switches never steal a placed caret.
+    await loadQuick(DOC_U, 'md', 'source');
+    await page.evaluate(() => {
+        setSourceDocExt('md');
+        loadMarkdownContent('First line\nSecond line here\nThird line');
+        if (state.mode !== 'wysiwyg') handleCommand('view_set:mode:wysiwyg');
+        const el = document.querySelector('#editor .block[data-model-index="1"]');
+        focusBlock(el, 5);
+        snapshotFormatSelectionFromEditor();
+    });
+    await new Promise(r => setTimeout(r, 85));
+    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('callout:note'); });
+    await settleQuick();
+    await page.evaluate(() => handleCommand('view_set:mode:source'));
+    await settleQuick();
+    await page.evaluate(() => HistoryManager.undo());
+    await settleQuick();
+    const r1U = await undoSnap();
+    await page.evaluate(() => HistoryManager.redo());
+    await settleQuick();
+    const r1R = await undoSnap();
+    same('Race 1 regression: Source -> Preview immediate caret survives 48ms timer across callout Undo (16) and Redo (28)',
+        r1U.start === 16 && r1U.end === 16 && r1R.start === 28 && r1R.end === 28, true);
+
+    await loadQuick(DOC_U, 'md', 'wysiwyg');
+    await focusAt(1, 5);
+    await page.evaluate(() => {
+        freezeFormatSelection();
+        applyFormatting('callout:note');
+        handleCommand('view_set:mode:source');
+        sourceEditor.setSelectionRange(28, 28);
+    });
+    await new Promise(r => setTimeout(r, 60));
+    const r2S = await undoSnap();
+    same('Race 2 regression: Preview callout -> immediate Source caret stays at 28 across 20ms paint timer',
+        r2S.start === 28 && r2S.end === 28, true);
 
     // 2. Source inline bold/italic selection span + Undo / Redo & Preview multi-block inline Undo / Redo
     await loadQuick(DOC_U, 'md', 'source');
@@ -610,11 +612,11 @@ try {
     await page.evaluate(() => { freezeFormatSelection(); applyFormatting('h2'); });
     await settleQuick();
     same('Shift+Enter line 0 h2 formats only line 0', await saved(), '## First\nSecond');
-    checkEndCaret(await undoSnap(), 0, 'Shift+Enter line 0 h2 Format');
+    checkCaret(await undoSnap(), 0, 2, 'Shift+Enter line 0 h2 Format');
     await page.evaluate(() => HistoryManager.undo());
     await settleQuick();
     same('Shift+Enter h2 Undo restores original block', await saved(), 'First\nSecond');
-    checkEndCaret(await undoSnap(), 0, 'Shift+Enter h2 Undo');
+    checkCaret(await undoSnap(), 0, 2, 'Shift+Enter h2 Undo');
 
     // 4. Insert Table leaves collapsed caret at start of Header 1 in both Source and Preview
     await loadQuick('Intro', 'md', 'source');

@@ -2050,6 +2050,25 @@
             return el || queryEl();
         }
 
+        let _inStickyRestore = 0;
+        if (typeof window !== 'undefined' && window.__tzCaretGen == null) window.__tzCaretGen = 0;
+        if (typeof document !== 'undefined' && !window.__tzCaretGenListeners) {
+            window.__tzCaretGenListeners = true;
+            const bumpCaretGenOnInput = function (e) {
+                try {
+                    const t = e && e.target;
+                    if (!t) return;
+                    if ((editor && (t === editor || editor.contains(t)))
+                        || (sourceEditor && (t === sourceEditor || (sourceEditor.contains && sourceEditor.contains(t))))) {
+                        window.__tzCaretGen = (window.__tzCaretGen || 0) + 1;
+                    }
+                } catch (eG) {}
+            };
+            document.addEventListener('pointerdown', bumpCaretGenOnInput, true);
+            document.addEventListener('mousedown', bumpCaretGenOnInput, true);
+            document.addEventListener('keydown', bumpCaretGenOnInput, true);
+        }
+
         /**
          * Put the user on hard line `line1Based` in the CURRENT mode and leave the caret there.
          * Source puts the line at the top of the view. Preview leaves `topPad` px above it
@@ -2057,6 +2076,8 @@
          * lands at the top as in Source, where the next switch reads it back.
          */
         function restoreStickyDocumentLine(line1Based, noFocus, topPad, exact, caretOffset) {
+            _inStickyRestore++;
+            try {
             const pad = topPad == null ? 48 : Math.max(0, topPad | 0);
             let line = Math.max(1, line1Based | 0);
             if (window.markProgrammaticScroll) window.markProgrammaticScroll(800);
@@ -2092,20 +2113,29 @@
                 const el = ensureModelBlockVisible(bi, { topPad: pad });
                 if (el) {
                     window.showDebugTelemetry('restoreSticky: ensureModelBlockVisible returned el, setting focus');
-                    currentActiveBlock = el;
                     try {
                         // An edit's reload (caretOffset given) already placed the caret -- a
                         // paste over the cut may have moved it lines on. Leave a live caret
                         // where it is; put one at the edit only if the remount lost it.
+                        // Live means in a line: a caret on the editor itself is a lost one.
                         let keepLive = false;
                         if (caretOffset != null) {
                             try {
                                 const s = window.getSelection();
                                 keepLive = !!(s && s.rangeCount && s.anchorNode && s.anchorNode.isConnected
-                                    && editor.contains(s.anchorNode));
+                                    && editor.contains(s.anchorNode) && getAncestorBlock(s.anchorNode));
                             } catch (eK) {}
                         }
-                        if (!noFocus && !keepLive) focusBlock(el, caretOffset != null ? caretOffset : 0);
+                        // The live caret's line is the active one; only a caret placed here
+                        // makes this line active.
+                        if (!keepLive) currentActiveBlock = el;
+                        if (!noFocus && !keepLive) {
+                            // A block format's caret, if the remount lost it: where the format
+                            // put it, never the start of the line (finishBlockFormatCaret).
+                            const placed = caretOffset != null && typeof placePendingFormatCaret === 'function'
+                                && placePendingFormatCaret();
+                            if (!placed) focusBlock(el, caretOffset != null ? caretOffset : 0);
+                        }
                     } catch (eF) {}
                     // Focus/caret can nudge scroll in WebView2 — re-snap once
                     try {
@@ -2129,6 +2159,9 @@
                 // after mode switch before selection settles.
                 try { updateStatsNow({ forceCaretLine: line }); } catch (eU2) {}
             } catch (e) {}
+            } finally {
+                _inStickyRestore--;
+            }
         }
 
         function modelIndexAtViewportCenter() {
@@ -2256,6 +2289,9 @@
             updateStats(false);
         }
 
+        // The line Reveal last drew as its Markdown (updateActiveBlock).
+        let _revealedBlock = null;
+
         function updateActiveBlock() {
             if (state.mode === 'source') {
                 updateCaretLineStatus();
@@ -2280,6 +2316,18 @@
                         renderBlockPreview(currentActiveBlock, raw);
                     }
                 }
+                // The line Reveal drew as Markdown, if some path made another line active
+                // without coming through here (a reload sets it directly): draw it as Preview
+                // too, or it kept showing "> " while the caret was elsewhere (2026-11-21).
+                if (_revealedBlock && _revealedBlock !== newActive && _revealedBlock !== currentActiveBlock
+                    && editor.contains(_revealedBlock) && state.revealOnFocus
+                    && typeof blockShowsRevealedMarkdown === 'function' && blockShowsRevealedMarkdown(_revealedBlock)) {
+                    const rb = _revealedBlock;
+                    const raw = rb.getAttribute('data-raw') || rb.innerText || '';
+                    rb.setAttribute('data-raw', raw);
+                    renderBlockPreview(rb, raw);
+                }
+                _revealedBlock = null;
                 currentActiveBlock = newActive;
                 if (currentActiveBlock && currentActiveBlock.classList && editor.contains(currentActiveBlock)) {
                     // setFocusedBlock rather than classList.add: this path knew to unlight
@@ -2288,6 +2336,7 @@
                     if (state.revealOnFocus) {
                         const raw = currentActiveBlock.getAttribute('data-raw') || '';
                         if (currentActiveBlock.innerText !== raw) currentActiveBlock.innerText = raw;
+                        _revealedBlock = currentActiveBlock;
                     }
                     if (state.typewriterMode) applyTypewriterScroll(true);
                 }
@@ -2322,6 +2371,7 @@
 
         function focusBlock(block, offset = null) {
             if (!block) return;
+            if (!_inStickyRestore) window.__tzCaretGen = (window.__tzCaretGen || 0) + 1;
             focusEditorNoScroll();
             if (offset !== null) {
                 try { setCaretAtOffset(block, offset); } catch(e) {}
@@ -2392,7 +2442,10 @@
                 } else {
                     return;
                 }
-                _editorCaretMemory = { kind: 'preview', index: index, start: start, end: end };
+                // With the text the offsets count in (Reveal draws the active line as Markdown,
+                // and a menu taking the keyboard draws it as Preview again).
+                _editorCaretMemory = { kind: 'preview', index: index, start: start, end: end,
+                    text: block.textContent || '', at: Date.now() };
             } catch (e) {}
         }
         window.rememberEditorCaret = rememberEditorCaret;
@@ -2441,8 +2494,29 @@
             if (!block || !editor.contains(block)) return false;
             focusEditorNoScroll();
             if (typeof setCaretAtOffset !== 'function') return true;
-            const start = mem.start | 0;
-            const end = mem.end != null ? (mem.end | 0) : start;
+            // Make the line the active one before placing the caret in it: with Reveal on,
+            // that redraws it as Markdown, which resets a caret placed first (it went to
+            // the start of the line after a menu). The offsets were taken in that text.
+            // A line marked active without being made so (a reload or an undo sets it
+            // directly): not lit, or with Reveal on still drawn as Preview. Make it active.
+            if (currentActiveBlock === block && (!block.classList.contains('focused')
+                || (state.revealOnFocus && typeof blockShowsRevealedMarkdown === 'function'
+                    && !blockShowsRevealedMarkdown(block)
+                    && !(typeof blockWasEdited === 'function' && blockWasEdited(block))))) currentActiveBlock = null;
+            if (currentActiveBlock !== block) {
+                try { setCaretAtOffset(block, 0); updateActiveBlock(); } catch (eAct) {}
+            }
+            let start = mem.start | 0;
+            let end = mem.end != null ? (mem.end | 0) : start;
+            // Offsets taken in other text than the line shows now (Reveal on, off): the same
+            // point in the text it shows (formatCaretMapOffset).
+            if (mem.text != null && typeof formatCaretMapOffset === 'function') {
+                const now = block.textContent || '';
+                if (now !== mem.text) {
+                    start = formatCaretMapOffset(mem.text, now, start);
+                    end = formatCaretMapOffset(mem.text, now, end);
+                }
+            }
             setCaretAtOffset(block, start);
             if (end > start) {
                 const sel = window.getSelection();
@@ -2486,6 +2560,16 @@
                 if (a !== editor && !(editor && editor.contains(a))) focusEditorNoScroll();
                 return true;
             }
+            // A selection across lines, newer than the caret remembered: put it back as it
+            // was, the same way round (it collapsed to a caret after a menu).
+            try {
+                const fz = (typeof _mbSelFreeze !== 'undefined') ? _mbSelFreeze : null;
+                const mem0 = _editorCaretMemory;
+                if (fz && fz.ends && fz.ends.a && fz.ends.f && fz.ends.a.index !== fz.ends.f.index
+                    && (!mem0 || (fz.at || 0) >= (mem0.at || 0))
+                    && typeof placePreviewFormatPoints === 'function'
+                    && placePreviewFormatPoints(fz.ends.a, fz.ends.f)) return true;
+            } catch (eMb) {}
             if (_editorCaretMemory && _editorCaretMemory.kind === 'preview')
                 return placePreviewCaretMemory(_editorCaretMemory);
             focusEditorNoScroll();

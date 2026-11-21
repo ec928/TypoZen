@@ -1601,10 +1601,13 @@
 
             function startPaint() {
                 if (stickyWanted && typeof restoreStickyDocumentLine === 'function') {
+                    const paintMode = state.mode;
+                    const paintCaretGen = window.__tzCaretGen || 0;
                     // Delay slightly to let browser layout update parent scroll bounds before scrolling
                     setTimeout(function() {
-                        // Not if another document has loaded since (a tab switch).
-                        if (window.__tzPaintGen !== paintGen) return;
+                        // Not if another document has loaded, view mode changed, or user placed caret since.
+                        if (window.__tzPaintGen !== paintGen || state.mode !== paintMode) return;
+                        if (stickyCaret == null && (window.__tzCaretGen || 0) !== paintCaretGen) return;
                         restoreStickyDocumentLine(stickyWanted, false, stickyPad, stickyExact, stickyCaret);
                     }, 20);
                 }
