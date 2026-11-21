@@ -3016,8 +3016,19 @@
         // Alt reveals hidden chrome. The page is the ONLY component that sees this key
         // while the editor has focus: the WebView's HWND belongs to the browser process,
         // so it never reaches the host's message loop or WPF's KeyDown.
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'Alt' || e.key === 'AltGraph' || e.keyCode === 18) postMsg('alt_cues:0');
+        }, true);
+        // Switching away with Alt held (Alt+Tab) never sends the keyup here.
+        window.addEventListener('blur', () => { postMsg('alt_cues:0'); });
         window.addEventListener('keydown', (e) => {
-            if (e.key === 'Alt' || e.keyCode === 18) { postMsg('reveal_chrome'); return; }
+            if (e.key === 'Alt' || e.keyCode === 18) {
+                postMsg('reveal_chrome');
+                // Underline the menus' access keys while Alt is held (the host turns them off
+                // on keyup, below). Not AltGr: that is Ctrl+Alt, typing an accented letter.
+                if (e.key === 'Alt' && !e.ctrlKey && !e.repeat) postMsg('alt_cues:1');
+                return;
+            }
             // Alt+F / Alt+E / ... must open the matching menu. WPF drew the underlines
             // but never sees the key while the editor has focus, so forward it. AltGr
             // sets ctrlKey too and is excluded, or accented input would trigger menus.

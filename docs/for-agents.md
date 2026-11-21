@@ -244,20 +244,22 @@ runs, never at launch, on a lookup or while reading. `Extensions.cs` owns all of
 - Claims about the network in README, About and the Store listing must keep saying "unless
   you install an extension". `docs/releasing.md` section 7 applies to these too
 
-## Formatting: one home (Ed, 2026-11-21)
+## Formatting: where it lives (Ed, 2026-11-21)
 
-Each surface has one job, and a command lives where its job puts it. Do not add a second mouse route to a formatting command.
+**The menu bar lists every command; right-click shows the ones that apply where you are** -- the rule Cut, Copy and Paste already follow (Edit menu and right-click). Each surface otherwise has one job; do not add another route to a formatting command.
 
 | Surface | Job | Holds |
 |---|---|---|
-| **Right-click** (editable document) | Change the text | Cut, Copy, Paste, Select All; in Markdown/text also Bold, Italic, Strikethrough, Inline Code, Link; Normal Text, Heading 1-6, Quote, Callout, the three lists; Insert Table. Shortcuts shown, the caret's line ticked |
+| **Format menu** (`Alt+O`) | The catalogue: find a command | Bold, Italic, Strikethrough, Inline Code, Link; Normal Text, Heading 1-6, Quote, Callout, the three lists; Insert Table. Shortcuts shown, the caret's line ticked |
+| **Right-click** (editable document) | Change the text where it is | Cut, Copy, Paste, Select All; in Markdown/text also the Format menu's items |
 | **Selection popup** (drag) | About the words, never changes them | Look up, Find, Read, Read from here, Highlight, Search web -- the same in a book and a document |
 | **Command row** | How you read and view | Read Aloud, Mode, Columns, Scroll/Pages -- no format buttons |
-| **Menu bar** | The file and the app | No Format menu |
 
-- **The right-click menu is defined once, in the host** (`ShowFormatMenuAtCursor`), built fresh each time from the state the page sends with `format_menu:` -- `{"block","callout","md","at"}`. Every item sends a `fmt:` message; `applyFormatting` (04-lists.js) is where they all land.
+- **The formatting items are defined once** (`AddFormatItems` in the host): the Format menu is filled from it at startup, the right-click menu (`ShowFormatMenuAtCursor`) each time it opens. Every item sends a `fmt:` message; `applyFormatting` (04-lists.js) is where they all land. `TickFormatItems` ticks both from the page's `formatStateAtCaret()`: sent with `format_menu:` for right-click, asked for with `ExecuteScriptAsync` as the Format menu opens (`RefreshFormatMenuTicks`).
+- **Greyed**: the Format menu is in `FormatControls` (Reader, books, PDFs), in `AllNativeDeadMenus` (native tabs), and locked on code files (`IsCodePath`).
 - **The page decides who owns a right-click** (`formatMenuOwnsRightClick`): any editable document in Preview or Source posts `format_menu:` and cancels the browser's menu (`md: false` in a code file: clipboard items only). Books, PDFs, Reader and the native tabs keep the browser's menu. A right-click it owns does not also raise the selection popup.
 - **The Menu key / Shift+F10** carry `"at"`: the caret in device pixels of the editor view (`caretPointForMenu`), which the host turns into a screen point. A right mousedown in the last second means the pointer.
+- **Holding Alt underlines the menus' access keys.** The page posts `alt_cues:1` / `alt_cues:0` on Alt down / up (05-model.js; not with Ctrl, which is AltGr) because the WebView owns the keyboard and WPF never sees Alt; the host key filter does the same for WM_SYSKEYDOWN/KEYUP. `ShowMenuKeyCues` calls WPF's internal `KeyboardNavigation.EnableKeyboardCues` by reflection; turning off waits while a menu is open, and happens on menu close or deactivation.
 - **No Markdown formatting on code or data files.** The page refuses by `NO_MARKDOWN_EXTS`, which is the host's `CodeExtensions`: change both together.
 - **Callouts:** the rules are written above `calloutPlan` in 04-lists.js (approved 2026-11-21) and checked by `callout-format-browser`. The edit reloads through `reloadAfterFormatEdit`, the same safe path as multi-line formats, as one undo step. Typing in a callout header with no title extends the shown name ("Tip" + "s" = title "Tips"): pinned by `callout-edit-browser`, by design.
 - **Enter in a quote or callout** carries `> ` on and an empty `> ` line ends it, as with lists (`quoteContinuation`, 05-model.js; Source in 03-shell.js). Checked by `quote-enter-browser`.

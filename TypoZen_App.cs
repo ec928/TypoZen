@@ -1840,8 +1840,29 @@ namespace TypoZen
             // About is an in-page themed panel (same shell as F1 help), not a system MessageBox.
             BindClick("mAbout", (s, e) => ShowHelpPanel("cmd:help_about"));
 
-            // Formatting has no buttons or menu-bar menu: it is on the right-click menu
-            // (ShowFormatMenuAtCursor) and the shortcuts (Ed, 2026-11-21).
+            // Formatting: the Format menu lists every command, right-click shows the same
+            // ones where the text is (Ed, 2026-11-21). One definition, AddFormatItems.
+            var fmtMenu = FindElement("menuFormat") as MenuItem;
+            if (fmtMenu != null)
+            {
+                _formatMenuItems = AddFormatItems(fmtMenu.Items);
+                fmtMenu.SubmenuOpened += (s, e) => { if (e.OriginalSource == fmtMenu) RefreshFormatMenuTicks(); };
+            }
+            // The access-key underlines Alt turns on (ShowMenuKeyCues) go when a menu closes
+            // with Alt no longer held, and when the window loses the keyboard.
+            var topMenuForCues = FindElement("topMenu") as Menu;
+            if (topMenuForCues != null)
+                foreach (object o in topMenuForCues.Items)
+                {
+                    var top = o as MenuItem;
+                    if (top == null) continue;
+                    top.SubmenuClosed += (s, e) =>
+                    {
+                        if ((WinForms.Control.ModifierKeys & WinForms.Keys.Alt) != WinForms.Keys.Alt)
+                            Dispatcher.BeginInvoke(new Action(() => ShowMenuKeyCues(false)));
+                    };
+                }
+            Deactivated += (s, e) => ShowMenuKeyCues(false);
 
             BindClick("btnToggleSidebar", (s, e) => SendMsg("cmd:toggle_sidebar"));
 
@@ -2928,6 +2949,7 @@ namespace TypoZen
         private const int WM_KEYDOWN = 0x0100;
         private const int WM_SYSKEYDOWN = 0x0104;
         private const int VK_MENU = 0x12, VK_LMENU = 0xA4, VK_RMENU = 0xA5;
+        private const int WM_KEYUP = 0x0101, WM_SYSKEYUP = 0x0105;
 
         private void InstallEditorKeyFilter()
         {
@@ -2947,6 +2969,40 @@ namespace TypoZen
             _editorKeyFilterInstalled = false;
         }
 
+        private static System.Reflection.MethodInfo _enableKeyboardCues;
+
+        /// <summary>
+        /// Underline the menus' access keys (File, Edit, Format...) while Alt is held.
+        ///
+        /// WPF shows them itself only when its own window has the keyboard; here the editor's
+        /// WebView nearly always does, so Alt never reached WPF and the underlines appeared
+        /// only once a menu was already open. KeyboardNavigation.EnableKeyboardCues is what
+        /// WPF calls on Alt; it is internal, hence reflection. Turning off is skipped while a
+        /// menu is open, which keeps its underlines while it is being used.
+        /// </summary>
+        private void ShowMenuKeyCues(bool on)
+        {
+            try
+            {
+                if (!on)
+                {
+                    var top = FindElement("topMenu") as Menu;
+                    if (top != null)
+                        foreach (object o in top.Items)
+                        {
+                            var mi = o as MenuItem;
+                            if (mi != null && mi.IsSubmenuOpen) return;
+                        }
+                }
+                if (_enableKeyboardCues == null)
+                    _enableKeyboardCues = typeof(KeyboardNavigation).GetMethod("EnableKeyboardCues",
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                if (_enableKeyboardCues == null) return;
+                _enableKeyboardCues.Invoke(null, new object[] { this, on });
+            }
+            catch (Exception ex) { LogFault("menu key cues", ex); }
+        }
+
         private void OnThreadPreprocessMessage(ref MSG msg, ref bool handled)
         {
             if (handled) return;
@@ -2955,6 +3011,14 @@ namespace TypoZen
             // Zoom keys/wheel are handled in page JS → zoom:in/out/reset (WebView focus)
             // plus WPF KeyDown / View menu (chrome focus). Do not also handle here or
             // every step would fire twice.
+
+            // Alt released: the menus' access-key underlines go again (ShowMenuKeyCues).
+            if (msg.message == WM_KEYUP || msg.message == WM_SYSKEYUP)
+            {
+                int ku = msg.wParam.ToInt32() & 0xFFFF;
+                if (ku == VK_MENU || ku == VK_LMENU || ku == VK_RMENU) ShowMenuKeyCues(false);
+                return;
+            }
 
             if (msg.message != WM_KEYDOWN && msg.message != WM_SYSKEYDOWN) return;
 
@@ -2972,6 +3036,11 @@ namespace TypoZen
                         SetChromeHidden(false);
                         _chromeHideAfter = DateTime.UtcNow.AddMilliseconds(ChromeHideDelayMs);
                     }
+                    // Holding Alt underlines each menu's access key, as Windows does: the
+                    // keys were only discoverable by already knowing one (Ed, 2026-11-21).
+                    // Not with Ctrl: Ctrl+Alt is AltGr, typing an accented letter.
+                    if ((WinForms.Control.ModifierKeys & WinForms.Keys.Control) != WinForms.Keys.Control)
+                        ShowMenuKeyCues(true);
                 }
                 if ((WinForms.Control.ModifierKeys & WinForms.Keys.Alt) == WinForms.Keys.Alt
                     && (WinForms.Control.ModifierKeys & WinForms.Keys.Control) != WinForms.Keys.Control)
@@ -8945,6 +9014,13 @@ namespace TypoZen
                     else if (which == "fullscreen") ToggleFullscreen();
                 }), DispatcherPriority.Normal);
             }
+            else if (msg.StartsWith("alt_cues:", StringComparison.Ordinal))
+            {
+                // Alt held or released in the page, which is where the keyboard nearly
+                // always is: underline the menus' access keys while it is held.
+                ShowMenuKeyCues(msg == "alt_cues:1");
+                return;
+            }
             else if (msg == "reveal_chrome")
             {
                 // Alt, forwarded from the page. Neither Window.KeyDown nor the message
@@ -11435,13 +11511,13 @@ namespace TypoZen
             RefreshEditingAvailability();
         }
 
-        // The Edit items that change the document (Undo, Redo, Cut, Paste) lock when it
-        // cannot take an edit; Copy, Select All, Find, Go to Page and the bookmark items read
-        // the document and stay. There are no format controls on the window any more:
-        // formatting is on the right-click menu, which the page offers only where an edit
-        // can land (Ed, 2026-11-21).
+        // The Format menu and the Edit items that change the document (Undo, Redo, Cut,
+        // Paste) lock when it cannot take an edit; Copy, Select All, Find, Go to Page and the
+        // bookmark items read the document and stay. There are no format buttons on the
+        // window: the Format menu and right-click are where formatting is (Ed, 2026-11-21).
         private static readonly string[] FormatControls =
         {
+            "menuFormat",
             "mUndo", "mRedo", "mCut", "mPaste",
         };
 
@@ -11479,6 +11555,17 @@ namespace TypoZen
                     if (!_formatTips.ContainsKey(name)) _formatTips[name] = c.ToolTip;
                     SetControlLocked(c, !editable);
                     c.ToolTip = editable ? _formatTips[name] : why;
+                }
+                // A code file takes edits, but not Markdown formatting (the page refuses it
+                // too: takesMarkdownFormatting).
+                if (editable && IsCodePath(_currentFilePath))
+                {
+                    var fm = FindElement("menuFormat") as Control;
+                    if (fm != null)
+                    {
+                        SetControlLocked(fm, true);
+                        fm.ToolTip = "Formatting is for Markdown and text documents, not code";
+                    }
                 }
                 // On a PDF, Undo and Redo are the annotation editor's (10-pdf.js).
                 if (ActiveIsPdf())
@@ -11954,14 +12041,6 @@ namespace TypoZen
         {
             if (_nativeSurfaceVisible || !IsDocumentEditable()) return;
             string s = state ?? "";
-            var rx = new Func<string, string>(key =>
-            {
-                var m = System.Text.RegularExpressions.Regex.Match(s, "\"" + key + @"""\s*:\s*""(\w+)""");
-                return m.Success ? m.Groups[1].Value : "";
-            });
-            string block = rx("block");
-            string callout = rx("callout");
-            bool inCallout = callout.Length > 0;
             bool md = !System.Text.RegularExpressions.Regex.IsMatch(s, @"""md""\s*:\s*false");
 
             var cm = NewPointerMenu();
@@ -11977,28 +12056,7 @@ namespace TypoZen
             if (md)
             {
                 cm.Items.Add(new Separator());
-                FormatItem(cm.Items, "_Bold", "Ctrl+B", "fmt:bold", false);
-                FormatItem(cm.Items, "_Italic", "Ctrl+I", "fmt:italic", false);
-                FormatItem(cm.Items, "_Strikethrough", "Ctrl+Shift+X", "fmt:strike", false);
-                FormatItem(cm.Items, "Inline Co_de", null, "fmt:code", false);
-                FormatItem(cm.Items, "_Link...", "Ctrl+K", "fmt:link", false);
-                cm.Items.Add(new Separator());
-                FormatItem(cm.Items, "_Normal Text", null, "fmt:para", block == "para" && !inCallout);
-                var heading = new MenuItem { Header = "_Heading", IsChecked = block.Length == 2 && block[0] == 'h' };
-                for (int h = 1; h <= 6; h++)
-                    FormatItem(heading.Items, "Heading _" + h, "Ctrl+" + h, "fmt:h" + h, block == "h" + h);
-                cm.Items.Add(heading);
-                FormatItem(cm.Items, "_Quote", null, "fmt:quote", block == "quote" && !inCallout);
-                var co = new MenuItem { Header = "Call_out", IsChecked = inCallout };
-                foreach (string k in CalloutKinds)
-                    FormatItem(co.Items, "_" + k, null, "fmt:callout:" + k.ToLowerInvariant(),
-                        string.Equals(callout, k, StringComparison.OrdinalIgnoreCase));
-                cm.Items.Add(co);
-                FormatItem(cm.Items, "B_ulleted List", null, "fmt:list", block == "list");
-                FormatItem(cm.Items, "Nu_mbered List", null, "fmt:ol", block == "ol");
-                FormatItem(cm.Items, "Tas_k List", null, "fmt:checklist", block == "checklist");
-                cm.Items.Add(new Separator());
-                FormatItem(cm.Items, "Insert Tabl_e...", "Ctrl+T", "fmt:table", false);
+                TickFormatItems(AddFormatItems(cm.Items), s);
             }
 
             var at = System.Text.RegularExpressions.Regex.Match(s, @"""at""\s*:\s*\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]");
@@ -12012,12 +12070,99 @@ namespace TypoZen
             else OpenAtCursor(cm);
         }
 
-        private void FormatItem(ItemCollection into, string header, string gesture, string msg, bool on)
+        /// <summary>
+        /// The formatting commands, defined once: the Format menu is built from this at
+        /// startup and the right-click menu each time it opens, so the two cannot drift.
+        /// Returns the items keyed by their fmt: message, plus "heading" and "callout" for
+        /// the two submenu parents, for TickFormatItems.
+        /// </summary>
+        private Dictionary<string, MenuItem> AddFormatItems(ItemCollection into)
         {
-            var m = new MenuItem { Header = header, IsChecked = on };
+            var map = new Dictionary<string, MenuItem>();
+            FormatItem(map, into, "_Bold", "Ctrl+B", "fmt:bold");
+            FormatItem(map, into, "_Italic", "Ctrl+I", "fmt:italic");
+            FormatItem(map, into, "_Strikethrough", "Ctrl+Shift+X", "fmt:strike");
+            FormatItem(map, into, "Inline Co_de", null, "fmt:code");
+            FormatItem(map, into, "_Link...", "Ctrl+K", "fmt:link");
+            into.Add(new Separator());
+            FormatItem(map, into, "_Normal Text", null, "fmt:para");
+            var heading = new MenuItem { Header = "_Heading" };
+            for (int h = 1; h <= 6; h++)
+                FormatItem(map, heading.Items, "Heading _" + h, "Ctrl+" + h, "fmt:h" + h);
+            into.Add(heading);
+            map["heading"] = heading;
+            FormatItem(map, into, "_Quote", null, "fmt:quote");
+            var co = new MenuItem { Header = "Call_out" };
+            foreach (string k in CalloutKinds)
+                FormatItem(map, co.Items, "_" + k, null, "fmt:callout:" + k.ToLowerInvariant());
+            into.Add(co);
+            map["callout"] = co;
+            FormatItem(map, into, "B_ulleted List", null, "fmt:list");
+            FormatItem(map, into, "Nu_mbered List", null, "fmt:ol");
+            FormatItem(map, into, "Tas_k List", null, "fmt:checklist");
+            into.Add(new Separator());
+            FormatItem(map, into, "Insert Tabl_e...", "Ctrl+T", "fmt:table");
+            return map;
+        }
+
+        private void FormatItem(Dictionary<string, MenuItem> map, ItemCollection into, string header, string gesture, string msg)
+        {
+            var m = new MenuItem { Header = header };
             if (!string.IsNullOrEmpty(gesture)) m.InputGestureText = gesture;
             m.Click += (o, e) => SendMsg(msg);
             into.Add(m);
+            map[msg] = m;
+        }
+
+        /// <summary>
+        /// Tick the caret line's type, from the page's state: {"block":"h2","callout":"tip"}.
+        /// An empty state clears every tick.
+        /// </summary>
+        private static void TickFormatItems(Dictionary<string, MenuItem> map, string state)
+        {
+            if (map == null) return;
+            string s = state ?? "";
+            var rx = new Func<string, string>(key =>
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(s, "\"" + key + @"""\s*:\s*""(\w+)""");
+                return m.Success ? m.Groups[1].Value : "";
+            });
+            string block = rx("block");
+            string callout = rx("callout").ToLowerInvariant();
+            bool inCallout = callout.Length > 0;
+            foreach (var kv in map)
+            {
+                string k = kv.Key;
+                bool on;
+                if (k == "heading") on = block.Length == 2 && block[0] == 'h';
+                else if (k == "callout") on = inCallout;
+                else if (k == "fmt:para") on = block == "para" && !inCallout;
+                else if (k == "fmt:quote") on = block == "quote" && !inCallout;
+                else if (k.StartsWith("fmt:callout:", StringComparison.Ordinal)) on = k.Substring(12) == callout;
+                else if (k == "fmt:list" || k == "fmt:ol" || k == "fmt:checklist") on = k.Substring(4) == block;
+                else if (k.Length == 6 && k.StartsWith("fmt:h", StringComparison.Ordinal)) on = k.Substring(4) == block;
+                else on = false;
+                kv.Value.IsChecked = on;
+            }
+        }
+
+        private Dictionary<string, MenuItem> _formatMenuItems;
+
+        /// <summary>The Format menu opened: clear its ticks, then ask the page what the caret's line is.</summary>
+        private async void RefreshFormatMenuTicks()
+        {
+            TickFormatItems(_formatMenuItems, "");
+            try
+            {
+                if (_webView == null || _webView.CoreWebView2 == null) return;
+                string res = await _webView.CoreWebView2.ExecuteScriptAsync(
+                    "typeof formatStateAtCaret === 'function' ? JSON.stringify(formatStateAtCaret()) : ''");
+                // A string comes back JSON-quoted: "{\"block\":\"h2\"...}".
+                if (res != null && res.Length >= 2 && res[0] == '"')
+                    res = System.Text.RegularExpressions.Regex.Unescape(res.Substring(1, res.Length - 2));
+                TickFormatItems(_formatMenuItems, res);
+            }
+            catch { }
         }
 
         /// <summary>A context menu in the theme, framed like the main menu's submenus.</summary>
@@ -13240,6 +13385,7 @@ namespace TypoZen
             if (msg.StartsWith("shortcut:", StringComparison.Ordinal)) return true;
             if (msg == "save_shortcut" || msg == "save_as_shortcut") return true;
             if (msg.StartsWith("menu_access:", StringComparison.Ordinal)) return true;
+            if (msg.StartsWith("alt_cues:", StringComparison.Ordinal)) return true;
             if (msg == "reveal_chrome" || msg == "focus_webview" || msg == "overlay_closed") return true;
             if (msg.StartsWith("define:", StringComparison.Ordinal)) return true;
             if (msg.StartsWith("cmd:search_web:", StringComparison.Ordinal)) return true;
@@ -18739,6 +18885,7 @@ namespace TypoZen
             get
             {
                 yield return "menuEdit";
+                yield return "menuFormat";
                 // Help stays: ShowHelpPanel shows its panels over a native tab. Only the
                 // Debug HUD goes -- it overlays the editor page, which a native tab hides.
                 yield return "mToggleDebug";

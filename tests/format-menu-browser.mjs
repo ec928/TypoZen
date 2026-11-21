@@ -137,6 +137,21 @@ try {
     await settled(page);
     same('Ctrl+Alt+2 (AltGr) changes nothing', await saved(), 'Title line\nSecond');
 
+    console.log('\n=== Alt underlines the menus\' access keys while held ===');
+    await load('Some text');
+    b = await lineBox(0);
+    await page.mouse.click(b.x + 10, b.y + b.height / 2);
+    const cues = () => page.evaluate(() => window.__sent.filter(m => m.indexOf('alt_cues:') === 0));
+    await page.evaluate(() => { window.__sent = []; });
+    await page.keyboard.down('Alt');
+    same('Alt down asks for the underlines', JSON.stringify(await cues()), JSON.stringify(['alt_cues:1']));
+    await page.keyboard.up('Alt');
+    same('Alt up takes them away', JSON.stringify(await cues()), JSON.stringify(['alt_cues:1', 'alt_cues:0']));
+    await page.evaluate(() => { window.__sent = []; });
+    await page.keyboard.down('Control'); await page.keyboard.down('Alt');
+    same('not for AltGr (Ctrl+Alt)', JSON.stringify(await cues()), JSON.stringify([]));
+    await page.keyboard.up('Alt'); await page.keyboard.up('Control');
+
     console.log('\n=== the selection popup: reading tools only ===');
     await load('Some words here');
     b = await lineBox(0);

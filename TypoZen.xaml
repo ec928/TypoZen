@@ -90,7 +90,7 @@
         <!-- Top Level Header Template -->
         <ControlTemplate x:Key="TopLevelHeaderTemplate" TargetType="MenuItem">
             <Border x:Name="templateRoot" Background="Transparent" BorderBrush="Transparent" BorderThickness="1"
-                    CornerRadius="4" Padding="9,4" Margin="1,0" SnapsToDevicePixels="True">
+                    CornerRadius="4" Padding="7,4" Margin="1,0" SnapsToDevicePixels="True">
                 <Grid>
                     <ContentPresenter x:Name="headerPresenter" ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
                     <Popup x:Name="PART_Popup" IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}" Placement="Bottom" Focusable="False" AllowsTransparency="True" PopupAnimation="Fade">
@@ -629,6 +629,9 @@
                             <MenuItem x:Name="mMarksPane" Header="Show Book_marks" InputGestureText="Ctrl+Shift+P"/>
                             <MenuItem x:Name="mReturnJump" Header="_Return from Jump" InputGestureText="Ctrl+Shift+J"/>
                         </MenuItem>
+                        <!-- Every formatting command; filled from the same definition as the
+                             right-click menu (AddFormatItems), so the two cannot drift. -->
+                        <MenuItem x:Name="menuFormat" Header="F_ormat"/>
                         <MenuItem Header="_View">
                             <MenuItem x:Name="menuSidebarGroup" Header="_Sidebar (Alt+\)">
                                 <MenuItem x:Name="mSidebarOutline" Header="_Outline"/>
