@@ -244,6 +244,15 @@ runs, never at launch, on a lookup or while reading. `Extensions.cs` owns all of
 - Claims about the network in README, About and the Store listing must keep saying "unless
   you install an extension". `docs/releasing.md` section 7 applies to these too
 
+## Formatting commands (one list, three places)
+
+- **The Format menu (`menuFormat`, `Alt+O`) is the list.** Right-click in an editable Markdown or text document opens a copy of it built from the real items each time (`ShowFormatMenuAtCursor`, like the Read Aloud pointer menu), under Cut, Copy, Paste and Select All. The toolbar's dropdowns are separate XAML items with the same names in the same order: keep them in step. Every item sends a `fmt:` message; `applyFormatting` (04-lists.js) is the one place they land.
+- **The page decides who owns a right-click** (`formatMenuOwnsRightClick`): an editable Markdown/text document in Preview or Source posts `format_menu:` and cancels the browser's menu; a book, a PDF, Reader and code files keep the browser's. A right-click it owns does not also raise the selection popup.
+- **Ticks** come from `tzFormatState()` -- the caret line's type and callout -- asked for as a menu opens (`RefreshFormatTicks`) or sent with `format_menu:`. Nothing is computed per caret move.
+- **No Markdown formatting on code or data files.** The host greys the controls by `CodeExtensions` (`MarkdownFormatControls`); the page refuses by `NO_MARKDOWN_EXTS`, the same list, so a shortcut refuses exactly where a menu is grey. Change both together.
+- **Callouts:** the rules are written above `calloutPlan` in 04-lists.js (Ed approved them 2026-11-21) and checked by `callout-format-browser`. The edit reloads through `reloadAfterFormatEdit`, the same safe path as multi-line formats, as one undo step.
+- **Ctrl+1..6** are in the host key filter and in page JS, like Ctrl+B; never with Alt (Ctrl+Alt is AltGr).
+
 ## Explicit non-goals (unless the user reopens them)
 
 - True IDE / Scintilla-class code editing in Preview

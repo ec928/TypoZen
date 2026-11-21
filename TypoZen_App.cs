@@ -1855,6 +1855,34 @@ namespace TypoZen
             BindClick("btnOrderedList", (s, e) => SendMsg("fmt:ol"));
             BindClick("btnChecklist", (s, e) => SendMsg("fmt:checklist"));
             BindClick("btnTable", (s, e) => SendMsg("fmt:table"));
+            BindClick("btnHPara", (s, e) => SendMsg("fmt:para"));
+            foreach (string k in CalloutKinds)
+            {
+                string kind = k;
+                BindClick("btnCallout" + kind, (s, e) => SendMsg("fmt:callout:" + kind.ToLowerInvariant()));
+                BindClick("mFmtCallout" + kind, (s, e) => SendMsg("fmt:callout:" + kind.ToLowerInvariant()));
+            }
+            // Format menu (Edit's Link, Table and Strikethrough moved here, bound above).
+            BindClick("mFmtBold", (s, e) => SendMsg("fmt:bold"));
+            BindClick("mFmtItalic", (s, e) => SendMsg("fmt:italic"));
+            BindClick("mFmtCode", (s, e) => SendMsg("fmt:code"));
+            BindClick("mFmtPara", (s, e) => SendMsg("fmt:para"));
+            for (int h = 1; h <= 6; h++)
+            {
+                string level = "h" + h;
+                BindClick("mFmtH" + h, (s, e) => SendMsg("fmt:" + level));
+            }
+            BindClick("mFmtQuote", (s, e) => SendMsg("fmt:quote"));
+            BindClick("mFmtList", (s, e) => SendMsg("fmt:list"));
+            BindClick("mFmtOl", (s, e) => SendMsg("fmt:ol"));
+            BindClick("mFmtTask", (s, e) => SendMsg("fmt:checklist"));
+            // Ticks on the line at the caret, asked for as each menu opens.
+            foreach (string menuName in new[] { "menuFormat", "miHeadings", "miLists", "miCallouts" })
+            {
+                var fm = FindElement(menuName) as MenuItem;
+                if (fm == null) continue;
+                fm.SubmenuOpened += (s, e) => { if (e.OriginalSource == fm) RefreshFormatTicks(); };
+            }
 
             BindClick("btnToggleSidebar", (s, e) => SendMsg("cmd:toggle_sidebar"));
 
@@ -2992,7 +3020,7 @@ namespace TypoZen
                     if (k >= 0x41 && k <= 0x5A)
                     {
                         char letter = (char)('a' + (k - 0x41));
-                        if (letter == 'f' || letter == 'e' || letter == 'v' || letter == 't' || letter == 'h')
+                        if (letter == 'f' || letter == 'e' || letter == 'o' || letter == 'v' || letter == 't' || letter == 'h')
                         {
                             handled = true;
                             char L = letter;
@@ -3048,6 +3076,11 @@ namespace TypoZen
             else if (vk == 0x4B) cmd = "fmt:link";                           // K
             else if (vk == 0x54) cmd = "fmt:table";                          // T
             else if (vk == 0x58 && shift) cmd = "fmt:strike";                // Ctrl+Shift+X
+            // Ctrl+1..6: headings. Not with Alt: Ctrl+Alt is AltGr on many layouts, and
+            // AltGr+4 types the euro sign on a UK keyboard.
+            else if (vk >= 0x31 && vk <= 0x36 && !shift
+                     && (WinForms.Control.ModifierKeys & WinForms.Keys.Alt) != WinForms.Keys.Alt)
+                cmd = "fmt:h" + (vk - 0x30);
             // Ctrl+W / Ctrl+Tab: page JS posts tab:close|next|prev when the editor has
             // focus (05-model.js). Do not also handle Ctrl+Tab here — double-fire made
             // tab targets jump. Chrome-focused Ctrl+Tab is handled in Window.KeyDown.
@@ -3120,6 +3153,7 @@ namespace TypoZen
                 char letter = '\0';
                 if (sk == Key.F) letter = 'f';
                 else if (sk == Key.E) letter = 'e';
+                else if (sk == Key.O) letter = 'o';
                 else if (sk == Key.V) letter = 'v';
                 else if (sk == Key.T) letter = 't';
                 else if (sk == Key.H) letter = 'h';
@@ -3202,6 +3236,13 @@ namespace TypoZen
                 {
                     if (_nativeSurfaceVisible) return;
                     SendMsg("fmt:strike");
+                    e.Handled = true;
+                }
+                else if (e.Key >= Key.D1 && e.Key <= Key.D6
+                         && (Keyboard.Modifiers & (ModifierKeys.Shift | ModifierKeys.Alt)) == 0)
+                {
+                    if (_nativeSurfaceVisible) return;
+                    SendMsg("fmt:h" + (e.Key - Key.D0));
                     e.Handled = true;
                 }
                 // Ctrl+Z / Ctrl+Y: ONLY via ThreadPreprocessMessage + SendHistoryCmd.
@@ -7970,6 +8011,12 @@ namespace TypoZen
                 HandleReadBar(msg.Substring("host_read_bar:".Length));
                 return;
             }
+            else if (msg.StartsWith("format_menu:", StringComparison.Ordinal))
+            {
+                string st = msg.Substring("format_menu:".Length);
+                Dispatcher.BeginInvoke(new Action(() => ShowFormatMenuAtCursor(st)));
+                return;
+            }
             else if (msg == "host_tts_halt")
             {
                 // Previous / Next paragraph: drop the sound without ending the reading.
@@ -11462,11 +11509,20 @@ namespace TypoZen
         // Page and the bookmark items read the document and stay.
         private static readonly string[] FormatControls =
         {
-            "headingMenu", "btnQuote", "listMenu",
+            "headingMenu", "btnQuote", "calloutMenu", "listMenu",
             "btnTable",
-            "mInsertLink", "mInsertTable", "mStrike",
+            "menuFormat",
             "mUndo", "mRedo", "mCut", "mPaste",
         };
+
+        // The Markdown formatting among them: greyed on a code file as well, where the
+        // document takes edits but "## " or "> [!NOTE]" would only corrupt it.
+        private static readonly string[] MarkdownFormatControls =
+        {
+            "headingMenu", "btnQuote", "calloutMenu", "listMenu", "btnTable", "menuFormat",
+        };
+
+        private static readonly string[] CalloutKinds = { "Note", "Tip", "Important", "Warning", "Caution" };
         private readonly Dictionary<string, object> _formatTips = new Dictionary<string, object>();
 
         /// <summary>
@@ -11504,6 +11560,18 @@ namespace TypoZen
                     if (!_formatTips.ContainsKey(name)) _formatTips[name] = c.ToolTip;
                     SetControlLocked(c, !editable);
                     c.ToolTip = editable ? _formatTips[name] : why;
+                }
+                // A code file takes edits, but not Markdown formatting (the page refuses it
+                // too: applyFormatting, isCodeDocument).
+                if (editable && IsCodePath(_currentFilePath))
+                {
+                    foreach (string name in MarkdownFormatControls)
+                    {
+                        var c = FindElement(name) as Control;
+                        if (c == null) continue;
+                        SetControlLocked(c, true);
+                        c.ToolTip = "Formatting is for Markdown and text documents, not code";
+                    }
                 }
                 // On a PDF, Undo and Redo are the annotation editor's (10-pdf.js).
                 if (ActiveIsPdf())
@@ -11960,6 +12028,94 @@ namespace TypoZen
             try { RebuildQwenVoiceMenu(); } catch { }
             try { RebuildBreezeVoiceMenu(); } catch { }
             RebuildSpeedMenu();
+            var cm = NewPointerMenu();
+            MirrorMenuItems(src, cm.Items);
+            OpenAtCursor(cm);
+        }
+
+        /// <summary>
+        /// Right-click in a Markdown document: Cut, Copy, Paste, Select All, then a copy of
+        /// the Format menu, ticked for the line at the caret. Built from the real items each
+        /// time, like the Read Aloud menu, so it cannot drift from them. The page asks for it
+        /// (format_menu:) only where formatting applies; elsewhere the browser's menu stays.
+        /// </summary>
+        private void ShowFormatMenuAtCursor(string state)
+        {
+            var fmt = FindElement("menuFormat") as MenuItem;
+            if (fmt == null || !fmt.IsEnabled) return;
+            ApplyFormatTicks(state);
+            var cm = NewPointerMenu();
+            foreach (string name in new[] { "mCut", "mCopy", "mPaste", "mSelectAll" })
+            {
+                var one = FindElement(name) as MenuItem;
+                if (one == null) continue;
+                var m = new MenuItem { Header = one.Header, IsEnabled = one.IsEnabled, InputGestureText = one.InputGestureText };
+                var orig = one;
+                m.Click += (s, e) => orig.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, orig));
+                cm.Items.Add(m);
+            }
+            cm.Items.Add(new Separator());
+            MirrorMenuItems(fmt, cm.Items);
+            OpenAtCursor(cm);
+        }
+
+        /// <summary>Ask the page what the caret's line is, then tick the format menus.</summary>
+        private async void RefreshFormatTicks()
+        {
+            try
+            {
+                if (_webView == null || _webView.CoreWebView2 == null) return;
+                string res = await _webView.CoreWebView2.ExecuteScriptAsync(
+                    "typeof tzFormatState === 'function' ? tzFormatState() : ''");
+                ApplyFormatTicks(res);
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Tick the line's type in the Format menu and the toolbar's dropdowns, from
+        /// {"block":"h2","callout":"tip"} (raw, or as ExecuteScriptAsync quotes it).
+        /// </summary>
+        private void ApplyFormatTicks(string state)
+        {
+            string s = state ?? "";
+            var bm = System.Text.RegularExpressions.Regex.Match(s, "block\\\\?\"\\s*:\\s*\\\\?\"(\\w+)");
+            var cmm = System.Text.RegularExpressions.Regex.Match(s, "callout\\\\?\"\\s*:\\s*\\\\?\"(\\w+)");
+            string block = bm.Success ? bm.Groups[1].Value : "";
+            string callout = cmm.Success ? cmm.Groups[1].Value : "";
+            Action<string, bool> tick = (name, on) =>
+            {
+                var mi = FindElement(name) as MenuItem;
+                if (mi != null) mi.IsChecked = on;
+            };
+            bool inCallout = callout.Length > 0;
+            tick("mFmtPara", block == "para" && !inCallout);
+            tick("btnHPara", block == "para" && !inCallout);
+            for (int h = 1; h <= 6; h++)
+            {
+                tick("mFmtH" + h, block == "h" + h);
+                tick("btnH" + h, block == "h" + h);
+            }
+            tick("mFmtHeading", block.Length == 2 && block[0] == 'h');
+            tick("mFmtQuote", block == "quote" && !inCallout);
+            tick("mFmtCallout", inCallout);
+            foreach (string k in CalloutKinds)
+            {
+                bool on = string.Equals(callout, k, StringComparison.OrdinalIgnoreCase);
+                tick("mFmtCallout" + k, on);
+                tick("btnCallout" + k, on);
+            }
+            tick("mFmtList", block == "list");
+            tick("btnList", block == "list");
+            tick("mFmtOl", block == "ol");
+            tick("btnOrderedList", block == "ol");
+            tick("mFmtTask", block == "checklist");
+            tick("btnChecklist", block == "checklist");
+        }
+
+        /// <summary>A context menu in the theme, framed like the main menu's submenus.</summary>
+        private ContextMenu NewPointerMenu()
+        {
             var cm = new ContextMenu();
             // The theme lives in the window's resources (menu brushes, item templates); a
             // context menu is not in the window's tree, so it gets a copy.
@@ -11973,7 +12129,11 @@ namespace TypoZen
                 "<Border Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' " +
                 "BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='6' Padding='0,4'>" +
                 "<StackPanel IsItemsHost='True' KeyboardNavigation.DirectionalNavigation='Cycle'/></Border></ControlTemplate>");
-            MirrorMenuItems(src, cm.Items);
+            return cm;
+        }
+
+        private void OpenAtCursor(ContextMenu cm)
+        {
             // The click happened in the WebView, which WPF's mouse does not follow: place it
             // from the real cursor, in device-independent units.
             var pt = WinForms.Cursor.Position;

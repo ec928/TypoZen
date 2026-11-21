@@ -665,10 +665,39 @@
                             <MenuItem x:Name="mMarkToggle" Header="Bookmark This _Page" InputGestureText="Ctrl+Shift+M"/>
                             <MenuItem x:Name="mMarksPane" Header="Show Book_marks" InputGestureText="Ctrl+Shift+P"/>
                             <MenuItem x:Name="mReturnJump" Header="_Return from Jump" InputGestureText="Ctrl+Shift+J"/>
+                        </MenuItem>
+                        <!-- Format: the one list of formatting commands. Right-click in a Markdown
+                             document opens a copy of it (ShowFormatMenuAtCursor), and the toolbar's
+                             dropdowns use the same names in the same order. -->
+                        <MenuItem x:Name="menuFormat" Header="F_ormat">
+                            <MenuItem x:Name="mFmtBold" Header="_Bold" InputGestureText="Ctrl+B"/>
+                            <MenuItem x:Name="mFmtItalic" Header="_Italic" InputGestureText="Ctrl+I"/>
+                            <MenuItem x:Name="mStrike" Header="_Strikethrough" InputGestureText="Ctrl+Shift+X"/>
+                            <MenuItem x:Name="mFmtCode" Header="Inline _Code"/>
+                            <MenuItem x:Name="mInsertLink" Header="_Link..." InputGestureText="Ctrl+K"/>
                             <Separator/>
-                            <MenuItem x:Name="mInsertLink" Header="Insert _Link" InputGestureText="Ctrl+K"/>
-                            <MenuItem x:Name="mInsertTable" Header="Insert _Table"/>
-                            <MenuItem x:Name="mStrike" Header="Strike_through" InputGestureText="Ctrl+Shift+X"/>
+                            <MenuItem x:Name="mFmtPara" Header="_Normal Text"/>
+                            <MenuItem x:Name="mFmtHeading" Header="_Heading">
+                                <MenuItem x:Name="mFmtH1" Header="Heading _1" InputGestureText="Ctrl+1"/>
+                                <MenuItem x:Name="mFmtH2" Header="Heading _2" InputGestureText="Ctrl+2"/>
+                                <MenuItem x:Name="mFmtH3" Header="Heading _3" InputGestureText="Ctrl+3"/>
+                                <MenuItem x:Name="mFmtH4" Header="Heading _4" InputGestureText="Ctrl+4"/>
+                                <MenuItem x:Name="mFmtH5" Header="Heading _5" InputGestureText="Ctrl+5"/>
+                                <MenuItem x:Name="mFmtH6" Header="Heading _6" InputGestureText="Ctrl+6"/>
+                            </MenuItem>
+                            <MenuItem x:Name="mFmtQuote" Header="_Quote"/>
+                            <MenuItem x:Name="mFmtCallout" Header="C_allout">
+                                <MenuItem x:Name="mFmtCalloutNote" Header="_Note"/>
+                                <MenuItem x:Name="mFmtCalloutTip" Header="_Tip"/>
+                                <MenuItem x:Name="mFmtCalloutImportant" Header="_Important"/>
+                                <MenuItem x:Name="mFmtCalloutWarning" Header="_Warning"/>
+                                <MenuItem x:Name="mFmtCalloutCaution" Header="_Caution"/>
+                            </MenuItem>
+                            <MenuItem x:Name="mFmtList" Header="B_ulleted List"/>
+                            <MenuItem x:Name="mFmtOl" Header="Nu_mbered List"/>
+                            <MenuItem x:Name="mFmtTask" Header="Tas_k List"/>
+                            <Separator/>
+                            <MenuItem x:Name="mInsertTable" Header="Insert _Table..." InputGestureText="Ctrl+T"/>
                         </MenuItem>
                         <MenuItem Header="_View">
                             <MenuItem x:Name="menuSidebarGroup" Header="_Sidebar (Alt+\)">
@@ -767,6 +796,8 @@
                                     <TextBlock Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="8" Margin="4,1,0,0" VerticalAlignment="Center" Opacity="0.65"/>
                                 </StackPanel>
                             </MenuItem.Header>
+                            <MenuItem x:Name="btnHPara" Header="_Normal Text"/>
+                            <Separator/>
                             <MenuItem x:Name="btnH1" Header="Heading _1"/>
                             <MenuItem x:Name="btnH2" Header="Heading _2"/>
                             <MenuItem x:Name="btnH3" Header="Heading _3"/>
@@ -777,7 +808,22 @@
                     </Menu>
                     <Button x:Name="btnQuote" Style="{StaticResource GhostToolbarButton}" Content="&#x201C;"
                             FontFamily="Georgia, 'Times New Roman', serif" FontSize="15" FontWeight="SemiBold"
-                            Margin="0,0,2,0" ToolTip="Blockquote"/>
+                            Margin="0,0,2,0" ToolTip="Quote"/>
+                    <Menu x:Name="calloutMenu" Background="Transparent" Padding="0" Margin="0,0,2,0" VerticalAlignment="Center">
+                        <MenuItem x:Name="miCallouts" Style="{StaticResource ToolbarMenuItem}" ToolTip="Callout: Note, Tip, Important, Warning, Caution">
+                            <MenuItem.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE946;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
+                                    <TextBlock Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="8" Margin="4,1,0,0" VerticalAlignment="Center" Opacity="0.65"/>
+                                </StackPanel>
+                            </MenuItem.Header>
+                            <MenuItem x:Name="btnCalloutNote" Header="_Note" FontFamily="Segoe UI Variable Text, Segoe UI"/>
+                            <MenuItem x:Name="btnCalloutTip" Header="_Tip" FontFamily="Segoe UI Variable Text, Segoe UI"/>
+                            <MenuItem x:Name="btnCalloutImportant" Header="_Important" FontFamily="Segoe UI Variable Text, Segoe UI"/>
+                            <MenuItem x:Name="btnCalloutWarning" Header="_Warning" FontFamily="Segoe UI Variable Text, Segoe UI"/>
+                            <MenuItem x:Name="btnCalloutCaution" Header="_Caution" FontFamily="Segoe UI Variable Text, Segoe UI"/>
+                        </MenuItem>
+                    </Menu>
                     <Menu x:Name="listMenu" Background="Transparent" Padding="0" Margin="0" VerticalAlignment="Center">
                         <MenuItem x:Name="miLists" Style="{StaticResource ToolbarMenuItem}" ToolTip="Lists">
                             <MenuItem.Header>
@@ -786,9 +832,9 @@
                                     <TextBlock Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="8" Margin="4,1,0,0" VerticalAlignment="Center" Opacity="0.65"/>
                                 </StackPanel>
                             </MenuItem.Header>
-                            <MenuItem x:Name="btnList" Header="_Bulleted list" FontFamily="Segoe UI Variable Text, Segoe UI"/>
-                            <MenuItem x:Name="btnOrderedList" Header="_Numbered list" FontFamily="Segoe UI Variable Text, Segoe UI"/>
-                            <MenuItem x:Name="btnChecklist" Header="_Task checklist" FontFamily="Segoe UI Variable Text, Segoe UI"/>
+                            <MenuItem x:Name="btnList" Header="_Bulleted List" FontFamily="Segoe UI Variable Text, Segoe UI"/>
+                            <MenuItem x:Name="btnOrderedList" Header="_Numbered List" FontFamily="Segoe UI Variable Text, Segoe UI"/>
+                            <MenuItem x:Name="btnChecklist" Header="_Task List" FontFamily="Segoe UI Variable Text, Segoe UI"/>
                         </MenuItem>
                     </Menu>
 

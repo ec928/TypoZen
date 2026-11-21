@@ -2446,9 +2446,11 @@
             if (lookup) lookup.hidden = !_selPopWord;
             try { fillSpellSuggestions(_selPopWord); } catch (eSp) {}
             
-            // Formatting and Links are bugs in a read-only book or PDF, hide them
+            // Formatting and Links are bugs in a read-only book or PDF, hide them -- and in a
+            // code file, where Markdown would only corrupt the code.
             const isEpub = (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub')
-                || !!window.tzPdfActive;
+                || !!window.tzPdfActive
+                || (typeof window.tzTakesMarkdownFormatting === 'function' && !window.tzTakesMarkdownFormatting());
             const editBtns = ['selPopBold', 'selPopItalic', 'selPopStrike', 'selPopCode', 'selPopLink', 'selPopDivFormat'];
             editBtns.forEach(id => {
                 const btn = document.getElementById(id);

@@ -3027,7 +3027,7 @@
                 if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
                 // Alt+S is the search sidebar, handled here. It must be claimed before the
                 // menu_access forward below, or the host would hunt for a top-level menu
-                // with S as its access key. No menu uses S (they are F/E/V/T/H).
+                // with S as its access key. No menu uses S (they are F/E/O/V/T/H).
                 if (e.key.toLowerCase() === 's') {
                     handleCommand('toggle_search_sidebar');
                     e.preventDefault();
@@ -3152,6 +3152,13 @@
             else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'x') {
                 e.preventDefault();
                 applyFormatting('strike');
+            }
+            // Ctrl+1..6: headings (the host's key filter sends the same; whichever sees the
+            // key first swallows it, as for Ctrl+B). By key position, so it is the digit row
+            // on every layout; never with Alt, which with Ctrl is AltGr.
+            else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && /^Digit[1-6]$/.test(e.code || '')) {
+                e.preventDefault();
+                applyFormatting('h' + e.code.slice(5));
             }
             // Zoom: host owns WebView2.ZoomFactor — page only requests (reliable when editor focused)
             else if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd')) {

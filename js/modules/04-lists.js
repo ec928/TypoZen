@@ -3322,10 +3322,24 @@
             return raw;
         }
 
+        // The host's CodeExtensions (TypoZen_App.cs), which greys the formatting controls on
+        // these files: the same list here, so a shortcut refuses exactly where a menu is grey.
+        const NO_MARKDOWN_EXTS = ['json', 'jsonc', 'xml', 'xaml', 'axaml', 'csproj', 'props', 'targets',
+            'config', 'resx', 'svg', 'xsd', 'plist', 'xsl', 'xslt', 'html', 'htm', 'xhtml', 'css',
+            'cs', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'java', 'c', 'h', 'cpp', 'hpp', 'cc', 'go',
+            'rs', 'swift', 'kt', 'php', 'log', 'csv', 'bat', 'cmd', 'sh', 'bash', 'ps1', 'ini',
+            'yaml', 'yml', 'sql', 'toml', 'env'];
+        function takesMarkdownFormatting() {
+            const ext = String((typeof state !== 'undefined' && state && state.docExt) || '').toLowerCase();
+            if (ext && NO_MARKDOWN_EXTS.indexOf(ext) >= 0) return false;
+            return !(typeof isCodeDocument === 'function' && isCodeDocument());
+        }
+        window.tzTakesMarkdownFormatting = takesMarkdownFormatting;
+
         function applyFormatting(type) {
             // Markdown formatting has no meaning in a code file: H2 on a C# line wrote "## "
             // into the code. The controls are greyed there too; this covers the shortcuts.
-            if (typeof isCodeDocument === 'function' && isCodeDocument()) return;
+            if (!takesMarkdownFormatting()) return;
             if (/^callout:/.test(String(type))) {
                 applyCallout(String(type).slice(8));
                 return;
@@ -3869,6 +3883,36 @@
             return st;
         }
         window.tzFormatState = function () { return JSON.stringify(formatStateAtCaret()); };
+
+        /**
+         * Right-click in an editable Markdown document opens TypoZen's menu -- Cut, Copy,
+         * Paste, Select All and the Format menu (ShowFormatMenuAtCursor in the host) --
+         * instead of the browser's. Books, PDFs, Reader, code files and the native tabs keep
+         * the menu they had.
+         */
+        function formatMenuOwnsRightClick(target) {
+            if (window.tzPdfActive || window.tzPdfEditing) return false;
+            if (typeof DocumentModel !== 'undefined' && DocumentModel.kind === 'epub') return false;
+            if (!takesMarkdownFormatting()) return false;
+            if (!target || !target.closest || !editor) return false;
+            if (state.mode === 'source') return typeof isSourceNode === 'function' && isSourceNode(target);
+            return editor.isContentEditable && editor.contains(target);
+        }
+        window.tzFormatMenuOwnsRightClick = formatMenuOwnsRightClick;
+        document.addEventListener('contextmenu', function (e) {
+            if (!formatMenuOwnsRightClick(e.target)) return;
+            e.preventDefault();
+            // The menu takes focus from the page, so the selection is frozen now, as a
+            // toolbar click freezes it. The Menu key gives no mousedown to unfreeze first.
+            try {
+                if (state.mode !== 'source') {
+                    _formatSelectionFrozen = false;
+                    snapshotFormatSelectionFromEditor();
+                }
+            } catch (eSnap) {}
+            try { if (typeof hideSelPop === 'function') hideSelPop(); } catch (eH) {}
+            postMsg('format_menu:' + JSON.stringify(formatStateAtCaret()));
+        });
 
         /** Plain offsets for the current (or cached) selection inside a block. */
         function resolveBlockPlainOffsets(block) {

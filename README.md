@@ -82,6 +82,19 @@ TypoZen opens Markdown of any size in Live Preview.
 - **Search Sidebar (`Alt+S`):** Dedicated sidebar with match-case and whole-word toggles. Remembers your last 8 searches across all sessions.
 - **Search mode** (a live result list — sidebar need not stay open): **Up / Down** step previous / next match with eyes on the text; **Left / Right** turn the page when the layout is paginated. A notice on the page says search mode is on until you use **Clear search** on it. Without results, Up/Down are normal (caret in Preview, page turn in Reader). **F3** / **Shift+F3** also step next/prev. In Source, arrows stay with the caret and the notice does not say otherwise.
 
+#### Formatting
+The formatting commands are in the **Format** menu (`Alt+O`), and **right-click** in a Markdown or text document opens the same commands at the pointer, under Cut, Copy, Paste and Select All. The toolbar's heading, quote, callout and list buttons are the same commands under the same names. Each command acts on the line the caret is on, or on every selected line; the menus tick what the caret's line is now.
+
+- **Text:** Bold (`Ctrl+B`), Italic (`Ctrl+I`), Strikethrough (`Ctrl+Shift+X`), Inline Code, Link (`Ctrl+K`). The same five are in the selection popup's **More**.
+- **Paragraph:** Normal Text (takes the heading, list or quote marker off), Heading 1–6 (`Ctrl+1` … `Ctrl+6`; the same key again goes back to normal text), Quote, Callout, Bulleted, Numbered and Task List. A heading, list or quote replaces the line's marker rather than adding to it.
+- **Callout** (Note, Tip, Important, Warning, Caution) — GitHub's boxed notes:
+  - On a line or a selection, it writes `> [!NOTE]` above and `> ` in front of each line; a blank line inside the selection becomes `>` so the box stays whole. On an empty line it starts an empty box with the caret inside.
+  - Inside a callout, another type changes the box's type and keeps its title; the type it already is takes the box apart, back to plain lines (a title stays as a line).
+  - It adds a blank line after the box when text follows, and before it when the line above is a quote, because GitHub would otherwise run them together.
+  - A code block, table, rule, picture or another callout in the selection: nothing happens.
+- **Insert Table** (`Ctrl+T`).
+- Code and data files (`.cs`, `.js`, `.json`, `.html`, `.css`, `.log`, `.csv`, `.yaml` and similar) take no Markdown formatting: the commands are greyed, the shortcuts do nothing, and right-click keeps the ordinary menu. A book, a PDF and Reader keep the ordinary right-click menu too.
+
 #### Links, tables & editing
 - **Spelling:** The Windows spell checker underlines misspellings in both Preview and Source (not in code, inline code or fenced code blocks). Select a word for replacements; see [Spelling](#spelling) below.
 - **Links** — hover a link for **Open Link**, **Show in Folder** and **Edit Link**; select text and use **Add Link** in the selection popover to make one. Both open a dialog with the visible text and the target.
@@ -89,7 +102,7 @@ TypoZen opens Markdown of any size in Live Preview.
   - `http`, `https` and `mailto` open in the default browser and carry a `↗`. **Only** those three schemes are handed to the shell; anything path-shaped is opened safely as a document rather than executed.
   - `#heading` jumps within the document, through the same path an outline click uses. Slugs follow the usual Markdown convention — lower-cased, punctuation dropped, each remaining space becoming its own hyphen, so `## Look & feel` is `#look--feel` — and letters in any script are kept, so `## 日本語` is `#日本語`. An anchor that matches no heading does nothing rather than guessing.
   - A plain click still places the caret — this is an editor, and link text has to stay editable. `Ctrl+click` opens directly.
-- **Tables** — the toolbar's table button inserts one; inside a table, `Tab` moves between cells and grows the table at the end.
+- **Tables** — the toolbar's table button, **Format → Insert Table** or `Ctrl+T` inserts one; inside a table, `Tab` moves between cells and grows the table at the end.
 - **Tab types a tab**, in Preview and Source, as in Notepad; `Shift+Tab` takes one back. On a list item Tab nests the list instead, and in a table it moves between cells. A run of tabs wraps onto the next line like any other space, and a tab is saved as a tab.
 - **Spaces are kept as typed** in Preview as in Source — a double space, a space at the start of a line, a space or tab at the end of one — and each is its own step for Undo.
 - **Enter keeps your indentation in Source** — indented blocks (fences, YAML, nested lists) keep their indent, ordered lists advance their marker (`3.` becomes `4.`), and Enter on an empty bullet ends the list. Brackets and quotes are deliberately not auto-closed.
@@ -98,14 +111,14 @@ TypoZen opens Markdown of any size in Live Preview.
 - **A clicked picture is removed only by a deliberate `Delete`, `Backspace` or Cut.** Typing, Space, Tab, paste and bold/italic do nothing to it; `Enter` adds a line after it.
 - **Undo** puts the caret back where the change was and leaves the view (Source or Preview) as it is.
 - **Insert** switches between inserting and overwriting, in both views; the caret turns into a block while overwriting, and overwriting stops at the end of the line rather than running into the next.
-- Formatting controls grey themselves out whenever the document cannot take an edit (Reader mode and every epub) rather than hiding, so switching modes never shuffles buttons under the pointer.
+- Formatting controls grey themselves out whenever the document cannot take an edit (Reader mode and every epub), and on code files, rather than hiding, so switching modes never shuffles buttons under the pointer.
 
 #### View, focus & layout
 - **Focus & immersion:** Reveal Markdown on focus (`F7`), Focus mode (`F8`), Typewriter scroll (`F9`), Fullscreen (`F11`).
 - **ZenMode** (**View → ZenMode (autohide UI)**) — hides everything but the page: the command row, the tabs, the window buttons and the status bar. Pointer to the **top** (or bare `Alt`) brings it all back, window buttons and dragging included; pointer to the **bottom** reveals the scrubber alone so seeking does not flash the toolbar back. The menu is always discoverable by reaching the top of the window.
 - **Left-edge sidebar hover** (**View → Side Panel Auto-hide**) — **off by default**, and separate from ZenMode. When switched on and with the sidebar unpinned, moving the pointer to the extreme left temporarily opens Outline/Search; moving away closes it. Opening with the toolbar, `Alt+\`, or `Alt+S` **pins** it until you close it again.
 - **Sidebar (`Alt+\`):** live outline (headings, or a book's own TOC), Marks, and the Search pane.
-- **Notepad-style chrome** — document tabs in the **title bar** with min/max/close; File/Edit/View/Themes/Help (`Alt+F` / `E` / `V` / `T` / `H`) and format icons on the command row below.
+- **Notepad-style chrome** — document tabs in the **title bar** with min/max/close; File/Edit/Format/View/Themes/Help (`Alt+F` / `E` / `O` / `V` / `T` / `H`) and format icons on the command row below.
 - **Editor margins:** Narrow / Regular / Wide — real side padding, grouped in **View** with Line Spacing and Paragraph Spacing.
 - **Headings** are separated by generous vertical space (1.25em above, 0.3em below) rather than horizontal rules, with a subtle hairline under `h1` in scroll view only.
 - **Justified & hyphenation** (**View → Justified**) — **off by default, including for books.** When enabled, automatic hyphenation (`6 3 3` break limits using the document or book's declared language) turns on with it so narrow columns do not open rivers of white space.
@@ -697,9 +710,11 @@ An ePub cannot be edited, so it has no instructions of yours:
 | Return from jump (search/outline/goto) | `Ctrl+Shift+J` |
 | Bold / Italic / Link | `Ctrl+B` / `Ctrl+I` / `Ctrl+K` |
 | Strikethrough | `Ctrl+Shift+X` |
+| Heading 1–6 (the same key again: normal text) | `Ctrl+1` … `Ctrl+6` |
+| Insert table | `Ctrl+T` |
 | Close tab | `Ctrl+W` |
 | Next / previous tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
-| Open File / Edit / View / Themes / Help menu | `Alt+F` / `Alt+E` / `Alt+V` / `Alt+T` / `Alt+H` |
+| Open File / Edit / Format / View / Themes / Help menu | `Alt+F` / `Alt+E` / `Alt+O` / `Alt+V` / `Alt+T` / `Alt+H` |
 | Help (syntax & shortcuts) | `F1` |
 | Reveal Markdown | `F7` |
 | Focus mode | `F8` |

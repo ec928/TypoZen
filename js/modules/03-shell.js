@@ -556,6 +556,9 @@
                     // "flashes for a split second" report, and the popover was erasing its
                     // own answer.
                     if (e.target && e.target.closest && e.target.closest('#selPop')) return;
+                    // A right-click that opens TypoZen's menu does not also raise the popup.
+                    if (e.button === 2 && typeof window.tzFormatMenuOwnsRightClick === 'function'
+                        && window.tzFormatMenuOwnsRightClick(e.target)) return;
                     // The pointer is the anchor in Source, where the selection has no
                     // rectangle of its own. Preview ignores it and uses the range's box.
                     const at = { left: e.clientX, top: e.clientY, width: 0, height: 0, bottom: e.clientY, target: e.target };
