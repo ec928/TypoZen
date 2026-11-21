@@ -510,7 +510,8 @@ try {
     await settleQuick();
     same('Source inline bold doc matches', await saved(), 'First line\nSecond **line** here\nThird line');
     const srcBoldSel1 = await undoSnap();
-    same('Source inline bold keeps ONLY **line** selected (18..26)', srcBoldSel1.start === 18 && srcBoldSel1.end === 26, true);
+    // Only the word stays selected, inside its markers, as in Preview (0.21.13).
+    same('Source inline bold keeps ONLY the word selected, inside **...** (20..24)', srcBoldSel1.start === 20 && srcBoldSel1.end === 24, true);
     await page.evaluate(() => applyFormatting('bold'));
     await settleQuick();
     same('Source inline bold second toggle restores original line', await saved(), DOC_U);
@@ -520,12 +521,12 @@ try {
     await settleQuick();
     same('Source inline bold then italic wraps span cleanly', await saved(), 'First line\nSecond ***line*** here\nThird line');
     const srcItalicSel = await undoSnap();
-    same('Source inline bold+italic keeps ONLY ***line*** selected (18..28)', srcItalicSel.start === 18 && srcItalicSel.end === 28, true);
+    same('Source inline bold+italic keeps ONLY the word selected, inside ***...*** (21..25)', srcItalicSel.start === 21 && srcItalicSel.end === 25, true);
     await page.evaluate(() => HistoryManager.undo());
     await settleQuick();
     const srcBoldU = await undoSnap();
-    same('Source inline Undo 1 restores **line** with caret at span end (26)',
-        (await saved()) === 'First line\nSecond **line** here\nThird line' && srcBoldU.start === 26 && srcBoldU.end === 26, true);
+    same('Source inline Undo 1 restores **line** with caret at the word end (24)',
+        (await saved()) === 'First line\nSecond **line** here\nThird line' && srcBoldU.start === 24 && srcBoldU.end === 24, true);
     await page.evaluate(() => HistoryManager.undo());
     await settleQuick();
     const srcBoldU2 = await undoSnap();
@@ -575,8 +576,9 @@ try {
         await settleQuick();
         same(mode + ' collapsed bold toggles whole line', await saved(), '**First line**\n\nSecond line');
         const cb1 = await undoSnap();
+        // At the end of the line, inside the closing marker, in both views (0.21.13).
         same(mode + ' collapsed bold leaves end-of-line caret',
-            mode === 'source' ? (cb1.start === 14 && cb1.end === 14) : (cb1.collapsed && cb1.blkIdx === '0' && cb1.off[0] === 10), true);
+            mode === 'source' ? (cb1.start === 12 && cb1.end === 12) : (cb1.collapsed && cb1.blkIdx === '0' && cb1.off[0] === 10), true);
         await page.evaluate(() => applyFormatting('bold'));
         await settleQuick();
         same(mode + ' collapsed bold toggles whole line off', await saved(), 'First line\n\nSecond line');

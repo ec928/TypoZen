@@ -3454,6 +3454,11 @@
             // shortcuts went straight through: Ctrl+B (since long before 0.21) and Ctrl+2
             // changed a Markdown document in Reader, and a book's text (2026-11-21).
             if (!formattingMayEdit()) return;
+            // A shortcut pressed on a live selection: remember its ends now (a menu or
+            // toolbar click has already frozen them).
+            if (state.mode !== 'source' && !_formatSelectionFrozen) {
+                try { snapshotMultiBlockSelectionFromLive(); } catch (eSn) {}
+            }
             // Markdown formatting has no meaning in a code file: H2 on a C# line wrote "## "
             // into the code. The controls are greyed there too; this covers the shortcuts.
             if (!takesMarkdownFormatting()) return;
@@ -3551,6 +3556,9 @@
                     if ((type === 'ol' || type === 'ordered') && forceOn && line.trim() && next !== line) olNum++;
                     return next;
                 }).join('\n');
+                // Nothing to change (Normal Text on plain lines): leave the selection where
+                // it is, as Preview does, rather than collapse it and record an empty undo.
+                if (out === chunk) return;
 
                 HistoryManager.beginEdit();
                 sourceEditor.setRangeText(out, s, e, 'end');
@@ -3677,6 +3685,13 @@
 
             // Single-block path: refuse if we have no real text (avoids "###### Heading 6" inserts)
             if (raws.every(function (r) { return !String(r || '').trim(); })) {
+                return;
+            }
+            // Nothing to change (Normal Text on a plain line): the caret and any selection stay
+            // where they are, as in Source, and no empty step goes on the undo stack.
+            if (raws.every(function (r) {
+                return transformRawForFormat(r, type, { forceOff: forceOff, forceOn: forceOn, olNum: 1 }) === r;
+            })) {
                 return;
             }
 

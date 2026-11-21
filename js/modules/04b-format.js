@@ -792,10 +792,18 @@
                     if (next == null || next === line) return true;
                     HistoryManager.beginEdit();
                     sourceSetRangeTextPreserveScroll(next, lineStart, lineEnd, 'end');
+                    // Turned on: the caret goes inside the closing marker, so what is typed
+                    // next is in the new format -- as in Preview, where it was already so.
+                    const closeMark = { bold: '**', italic: '*', strike: '~~', code: '`' }[type] || '';
+                    let caretAt = lineStart + next.length;
+                    if (closeMark && next.length > line.length && next.slice(-closeMark.length) === closeMark) {
+                        caretAt -= closeMark.length;
+                        try { sourceEditor.setSelectionRange(caretAt, caretAt); } catch (eCa) {}
+                    }
                     resizeSourceEditor();
                     updateStats();
                     HistoryManager.commitEdit();
-                    stampSrcInlineCaret(lineStart + next.length, lineEnd, true);
+                    stampSrcInlineCaret(caretAt, lineEnd, true);
                     return true;
                 }
 
@@ -811,21 +819,76 @@
                     // Code inside a fence is not marked: its lines got "**" written into them.
                     let inFence = false;
                     full.substring(0, s).split('\n').forEach(function (l) { if (/^\s*(```|~~~)/.test(l)) inFence = !inFence; });
-                    const out = lines.map(function (line) {
-                        if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; return line; }
-                        if (inFence || !String(line).trim()) return line;
-                        return transformRawForFormat(line, type, { wholeLines: true });
-                    }).join('\n');
+                    const focus = {};
+                    lines.forEach(function (line, i) {
+                        if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; return; }
+                        if (!inFence && String(line).trim()) focus[i] = true;
+                    });
+                    const keys = Object.keys(focus).map(Number);
+                    if (!keys.length) return true;
+                    // What is selected, not the whole of the first and last lines (Ed, 2026-11-14),
+                    // by Preview's own rule (inlineMarksForSelectedLines), so the two views agree.
+                    // The selection's ends go in as the plain text before and after it.
+                    const prefRe = /^(?:#{1,6}\s+|>\s*|[ \t]*(?:[-*+]\s+(?:\[[ xX]\]\s?)?|\d+\.(?!\d)\s*))/;
+                    const bodyOf = function (raw) {
+                        const pre = (raw.match(prefRe) || [''])[0];
+                        let body = raw.slice(pre.length);
+                        if (pre && /^#/.test(pre)) { const cm = body.match(/\s+#+\s*$/); if (cm) body = body.slice(0, body.length - cm[0].length); }
+                        return { pre: pre, body: body };
+                    };
+                    const plainIndexAt = function (raw, rawOff) {
+                        const bo = bodyOf(raw);
+                        const p2r = plainRangeToRawOffsets(bo.body, 0, 0).plainToRaw || [];
+                        const rel = Math.max(0, rawOff - bo.pre.length);
+                        let p = 0;
+                        while (p < p2r.length && p2r[p] < rel) p++;
+                        return { p: p, plain: plainAndMarksFromMarkdown(bo.body).plain };
+                    };
+                    const firstK = keys[0], lastK = keys[keys.length - 1];
+                    const startCol = start - s;
+                    let lastLineStart = 0;
+                    for (let i = 0; i < lines.length - 1; i++) lastLineStart += lines[i].length + 1;
+                    const endCol = end - (s + lastLineStart);
+                    const fp = firstK === 0 ? plainIndexAt(lines[0], startCol) : null;
+                    const lp = lastK === lines.length - 1 ? plainIndexAt(lines[lastK], endCol) : null;
+                    const savedFz = typeof _mbSelFreeze !== 'undefined' ? _mbSelFreeze : null;
+                    let plan = null;
+                    try {
+                        _mbSelFreeze = {
+                            fromIdx: firstK, toIdx: lastK,
+                            prefix: fp ? fp.plain.slice(0, fp.p) : '',
+                            suffix: lp ? lp.plain.slice(lp.p) : ''
+                        };
+                        plan = inlineMarksForSelectedLines(lines, focus, type);
+                    } finally { _mbSelFreeze = savedFz; }
+                    if (!plan || !Object.keys(plan).length) return true;
+                    const outLines = lines.map(function (line, i) {
+                        return Object.prototype.hasOwnProperty.call(plan, i) ? String(plan[i]) : line;
+                    });
+                    const out = outLines.join('\n');
+                    // The caret goes to the end of what was marked on the last line, inside its
+                    // closing marker, as in Preview; nothing is left selected to be typed over.
+                    let caret = s + out.length;
+                    try {
+                        let off = 0;
+                        for (let i = 0; i < lastK; i++) off += outLines[i].length + 1;
+                        const bo = bodyOf(outLines[lastK]);
+                        const p2r = plainRangeToRawOffsets(bo.body, 0, 0).plainToRaw || [];
+                        const pEndPlain = lp ? lp.p : p2r.length;
+                        const inBody = pEndPlain > 0 && p2r.length >= pEndPlain ? p2r[pEndPlain - 1] + 1 : 0;
+                        caret = s + off + bo.pre.length + inBody;
+                    } catch (eCaret) {}
                     HistoryManager.beginEdit();
-                    // Keep scroll pin: setRangeText('select') otherwise jumps ~1–2 lines
-                    sourceSetRangeTextPreserveScroll(out, s, e, 'select');
-                    try { _sourceFormatSel = { start: s, end: s + out.length }; } catch (eF) {}
+                    withSourceScrollPreserved(function () {
+                        sourceEditor.setRangeText(out, s, e, 'end');
+                        sourceEditor.setSelectionRange(caret, caret);
+                    });
+                    _sourceFormatSel = null;
                     resizeSourceEditor();
-                    // resize can also nudge; re-pin once more after layout
                     withSourceScrollPreserved(function () {});
                     updateStats();
                     HistoryManager.commitEdit();
-                    stampSrcInlineCaret(s + out.length, e, true);
+                    stampSrcInlineCaret(caret, end, false);
                     return true;
                 }
 
@@ -922,13 +985,12 @@
                             if (cm2) nextBody = nextBody.slice(0, nextBody.length - cm2[0].length);
                         }
                         const nextP2r = plainRangeToRawOffsets(nextBody, 0, 0).plainToRaw || [];
-                        const rawStartBase = pStart > 0 ? (nextP2r[pStart - 1] + 1) : 0;
-                        const rawCharStart = pStart < nextP2r.length ? nextP2r[pStart] : nextBody.length;
-                        const openedAtStart = rawStartBase < rawCharStart;
-                        const rawStartInNext = openedAtStart ? rawStartBase : rawCharStart;
-                        const rawEndInNext = openedAtStart
-                            ? (pEnd < nextP2r.length ? nextP2r[pEnd] : nextBody.length)
-                            : (pEnd > 0 && (pEnd - 1) < nextP2r.length ? (nextP2r[pEnd - 1] + 1) : rawStartInNext);
+                        // The same words stay selected, inside their markers, as in Preview:
+                        // typing over them keeps the format, and the key again takes it off.
+                        // (Selecting the markers too made typing drop the bold in Source only.)
+                        const rawStartInNext = pStart < nextP2r.length ? nextP2r[pStart] : nextBody.length;
+                        const rawEndInNext = (pEnd > pStart && (pEnd - 1) < nextP2r.length)
+                            ? (nextP2r[pEnd - 1] + 1) : rawStartInNext;
                         const selStart = Math.min(lineStart + rawNext.length, lineStart + np.length + rawStartInNext);
                         const selEnd = Math.max(selStart, Math.min(lineStart + rawNext.length, lineStart + np.length + rawEndInNext));
                         HistoryManager.beginEdit();
@@ -951,10 +1013,17 @@
                 }
                 HistoryManager.beginEdit();
                 sourceSetRangeTextPreserveScroll(rep, start, end, 'select');
+                // Wrapped: the words stay selected inside their markers, as in Preview.
+                let repSelEnd = start + rep.length;
+                if (open && rep.length > inner.length && rep.slice(0, open.length) === open && rep.slice(-close.length) === close) {
+                    repSelEnd = start + rep.length - close.length;
+                    try { sourceEditor.setSelectionRange(start + open.length, repSelEnd); } catch (eRs) {}
+                    _sourceFormatSel = { start: start + open.length, end: repSelEnd };
+                }
                 resizeSourceEditor();
                 updateStats();
                 HistoryManager.commitEdit();
-                stampSrcInlineCaret(start + rep.length, end, false);
+                stampSrcInlineCaret(repSelEnd, end, false);
                 return true;
             }
 
@@ -2554,6 +2623,9 @@
                 }
                 _shiftFromEdge = null;
                 try { if (typeof refreshRememberedFreezeFromFocus === 'function') refreshRememberedFreezeFromFocus(); } catch (eRf) {}
+                // A selection made with the keyboard needs its ends remembered as a drag's
+                // are (mouseup): without them Bold over two lines marked the whole of both.
+                try { if (typeof snapshotMultiBlockSelectionFromLive === 'function') snapshotMultiBlockSelectionFromLive(); } catch (eSn) {}
                 return;
             }
             try {
