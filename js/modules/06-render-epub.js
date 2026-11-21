@@ -2407,12 +2407,15 @@
                 const alertType = calloutTypeOfRaw(html);
                 if (alertType) {
                     const defaultTitle = alertType.charAt(0).toUpperCase() + alertType.slice(1);
-                    const titleText = html.replace(/^>\s*\[![A-Za-z]+\]\s*/, '').trim() || defaultTitle;
+                    const written = html.replace(/^>\s*\[![A-Za-z]+\]\s*/, '').trim();
+                    const titleText = written || defaultTitle;
                     const iconSvg = ALERT_ICONS[alertType] || ALERT_ICONS.note;
+                    // data-tz-name: the title shown is the type's name, not text in the file,
+                    // so the serializer leaves it out of what was typed after it.
                     block.innerHTML = `<div class="tz-alert tz-alert-${alertType}">` +
                         `<div class="tz-alert-header">` +
                         iconSvg +
-                        `<span class="tz-alert-title">${escapeHtml(titleText)}</span>` +
+                        `<span class="tz-alert-title"${written ? '' : ' data-tz-name="' + defaultTitle + '"'}>${escapeHtml(titleText)}</span>` +
                         `</div></div>`;
                     return;
                 }
