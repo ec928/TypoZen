@@ -2785,6 +2785,9 @@
                 }
                 postLines.push(raw == null ? '' : coerceBlockRaw(raw));
             }
+            const focusKeys = Object.keys(focusIndices).map(Number).sort(function (a, b) { return a - b; });
+            const firstIdx = focusKeys.length ? focusKeys[0] : null;
+            const lastIdx = focusKeys.length ? focusKeys[focusKeys.length - 1] : null;
             // For paragraph-level formats (!inlinePlan), pass caretOffset 0 so the deferred
             // sticky restore keeps the live caret we place at the end of the last altered block,
             // matching Callout, Heading and Quote.
@@ -2793,6 +2796,13 @@
                 try {
                     focusBlock(currentActiveBlock, (currentActiveBlock.textContent || '').length);
                     if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
+                    const postBi = formatBlockIndex(currentActiveBlock);
+                    const bi = postBi >= 0 ? postBi : (lastIdx != null ? lastIdx : -1);
+                    if (bi >= 0 && typeof HistoryManager !== 'undefined' && typeof HistoryManager.setTopCarets === 'function') {
+                        const c = { mode: 'wysiwyg', blockIndex: bi, endOfBlock: true, exact: true };
+                        if (firstIdx != null && firstIdx !== bi) c.anchorIndex = firstIdx;
+                        HistoryManager.setTopCarets(c, c);
+                    }
                     _formatSelectionFrozen = false;
                     _selectedFormatRaws = {};
                     _inlineSelCache = null;
@@ -3476,6 +3486,14 @@
                 resizeSourceEditor();
                 updateStats();
                 HistoryManager.commitEdit();
+                const postEnd = s + out.length;
+                if (typeof HistoryManager.setTopCarets === 'function') {
+                    HistoryManager.setTopCarets(
+                        { mode: 'source', start: postEnd, end: postEnd, exact: true },
+                        { mode: 'source', start: e, end: e, exact: true }
+                    );
+                }
+                if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
                 return;
             }
 
@@ -3589,6 +3607,7 @@
                 return;
             }
 
+            const preBi = formatBlockIndex(targets[0]);
             HistoryManager.beginEdit();
 
             // Paragraph formats (Heading, Quote, Normal Text, Callout, Lists) always act on whole
@@ -3646,6 +3665,15 @@
             updateStats();
             updateOutline();
             HistoryManager.commitEdit();
+            try {
+                const postBi = formatBlockIndex(currentActiveBlock);
+                if (postBi >= 0 && typeof HistoryManager !== 'undefined' && typeof HistoryManager.setTopCarets === 'function') {
+                    HistoryManager.setTopCarets(
+                        { mode: 'wysiwyg', blockIndex: postBi, endOfBlock: true, exact: true },
+                        { mode: 'wysiwyg', blockIndex: preBi >= 0 ? preBi : postBi, endOfBlock: true, exact: true }
+                    );
+                }
+            } catch (eHc) {}
         }
 
         // --- Callouts (GitHub alerts) -------------------------------------------------
@@ -3789,6 +3817,7 @@
                 };
                 let from = lineStart(plan.start);
                 let to = lineStart(plan.end - 1) + lines[plan.end - 1].length;
+                const preEnd = to;
                 let text = plan.lines.join('\n');
                 if (!plan.lines.length) {
                     // The lines go entirely, with one of the line breaks around them.
@@ -3798,6 +3827,7 @@
                 }
                 HistoryManager.beginEdit();
                 sourceEditor.setRangeText(text, from, to, 'end');
+                let postCaretPos = from + text.length;
                 try {
                     const after = sourceEditor.value.split('\n');
                     const fl = Math.min(plan.focus[1], after.length - 1);
@@ -3805,10 +3835,18 @@
                     for (let i = 0; i < fl; i++) p += after[i].length + 1;
                     p += after[fl].length;
                     sourceEditor.setSelectionRange(p, p);
+                    postCaretPos = p;
                 } catch (eSel) {}
                 resizeSourceEditor();
                 updateStats();
                 HistoryManager.commitEdit();
+                if (typeof HistoryManager.setTopCarets === 'function') {
+                    HistoryManager.setTopCarets(
+                        { mode: 'source', start: postCaretPos, end: postCaretPos, exact: true },
+                        { mode: 'source', start: preEnd, end: preEnd, exact: true }
+                    );
+                }
+                if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
                 return true;
             }
 
@@ -3843,6 +3881,18 @@
                     focusBlock(el, (el.textContent || '').length);
                     currentActiveBlock = el;
                     if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
+                }
+                const postBi = el ? formatBlockIndex(el) : Math.max(0, Math.min(postLines.length - 1, plan.focus[1]));
+                if (postBi >= 0 && typeof HistoryManager !== 'undefined' && typeof HistoryManager.setTopCarets === 'function') {
+                    const redoCaret = { mode: 'wysiwyg', blockIndex: postBi, endOfBlock: true, exact: true };
+                    const redoAnchor = plan.focus[0] != null
+                        ? Math.max(0, Math.min(postLines.length - 1, plan.focus[0]))
+                        : postBi;
+                    if (redoAnchor !== postBi) redoCaret.anchorIndex = redoAnchor;
+                    const undoEnd = idx[idx.length - 1];
+                    const undoCaret = { mode: 'wysiwyg', blockIndex: undoEnd, endOfBlock: true, exact: true };
+                    if (idx.length && idx[0] !== undoEnd) undoCaret.anchorIndex = idx[0];
+                    HistoryManager.setTopCarets(redoCaret, undoCaret);
                 }
                 _formatSelectionFrozen = false;
                 _selectedFormatRaws = {};
@@ -4398,6 +4448,7 @@
                         if (e > n) e = n;
                         sourceEditor.focus();
                         sourceEditor.setSelectionRange(s, e);
+                        if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
                         if (typeof resizeSourceEditor === 'function') {
                             try { resizeSourceEditor(); } catch (e2) {}
                         }
@@ -4406,19 +4457,34 @@
                     if (!editor) return;
                     let idx = caret.blockIndex | 0;
                     if (idx < 0) idx = 0;
+                    let anchorIdx = caret.anchorIndex != null ? (caret.anchorIndex | 0) : idx;
+                    if (anchorIdx < 0) anchorIdx = 0;
                     const off = caret.offset != null ? (caret.offset | 0) : 0;
 
                     // Model-aware path: mount target under virt, then focus.
                     let block = null;
+                    let anchorEl = null;
                     const modelN = (typeof DocumentModel !== 'undefined' && DocumentModel.blocks)
                         ? DocumentModel.blocks.length : 0;
                     if (modelN > 0) {
                         if (idx >= modelN) idx = modelN - 1;
+                        if (anchorIdx >= modelN) anchorIdx = modelN - 1;
                         try {
                             if (typeof ensureModelBlockVisible === 'function') {
-                                // keepTop: the paragraph's height on screen before the
-                                // reload (restore); 48 px only when it was not on screen.
-                                block = ensureModelBlockVisible(idx, { topPad: keepTop != null ? keepTop : 48 });
+                                if (keepTop != null && anchorIdx !== idx) {
+                                    anchorEl = ensureModelBlockVisible(anchorIdx, { topPad: keepTop });
+                                    if (typeof mountedBlockAtFormatIndex === 'function') {
+                                        try { block = mountedBlockAtFormatIndex(idx); } catch (eM) {}
+                                    }
+                                    if (!block) {
+                                        block = editor.querySelector('.block[data-model-index="' + idx + '"]');
+                                    }
+                                }
+                                if (!block) {
+                                    // keepTop: the paragraph's height on screen before the
+                                    // reload (restore); 48 px only when it was not on screen.
+                                    block = ensureModelBlockVisible(idx, { topPad: (keepTop != null && anchorIdx === idx) ? keepTop : 48 });
+                                }
                             }
                         } catch (eVis) {}
                         if (!block && typeof mountedBlockAtFormatIndex === 'function') {
@@ -4433,11 +4499,17 @@
                         const blocks = editor.querySelectorAll('.block');
                         if (!blocks.length) return;
                         if (idx >= blocks.length) idx = blocks.length - 1;
+                        if (anchorIdx >= blocks.length) anchorIdx = blocks.length - 1;
                         block = blocks[idx];
+                        if (anchorIdx !== idx && !anchorEl) anchorEl = blocks[anchorIdx];
                     }
                     if (!block) return;
                     currentActiveBlock = block;
-                    try { focusBlock(block, off); } catch (e3) {
+                    const targetOff = caret.endOfBlock ? (block.textContent || '').length : off;
+                    try {
+                        focusBlock(block, targetOff);
+                        if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
+                    } catch (e3) {
                         focusEditorNoScroll();
                     }
                     try {
@@ -4449,10 +4521,22 @@
                     // Exactly where it was: ensureModelBlockVisible lands within ~20 px of the
                     // padding it is given (height estimates); close the gap in one step.
                     try {
-                        if (keepTop != null && mainContainer && editor.contains(block)) {
-                            const d = Math.round(block.getBoundingClientRect().top
-                                - mainContainer.getBoundingClientRect().top) - keepTop;
-                            if (Math.abs(d) > 1) mainContainer.scrollTop += d;
+                        if (keepTop != null && mainContainer) {
+                            let keepEl = (anchorEl && editor.contains(anchorEl)) ? anchorEl : null;
+                            if (!keepEl && anchorIdx !== idx) {
+                                if (typeof mountedBlockAtFormatIndex === 'function') {
+                                    try { keepEl = mountedBlockAtFormatIndex(anchorIdx); } catch (eM) {}
+                                }
+                                if (!keepEl) {
+                                    keepEl = editor.querySelector('.block[data-model-index="' + anchorIdx + '"]');
+                                }
+                            }
+                            if (!keepEl && anchorIdx === idx && editor.contains(block)) keepEl = block;
+                            if (keepEl && editor.contains(keepEl)) {
+                                const d = Math.round(keepEl.getBoundingClientRect().top
+                                    - mainContainer.getBoundingClientRect().top) - keepTop;
+                                if (Math.abs(d) > 1) mainContainer.scrollTop += d;
+                            }
                         }
                     } catch (e6) {}
                     // Pages: land on the page holding the edit through the page map, so the
@@ -4466,13 +4550,15 @@
                 } catch (e) {}
             },
 
-            _stateFromContent(content, caret) {
+            _stateFromContent(content, caret, undoCaret) {
                 const c = caret !== undefined ? caret : this._captureCaret();
-                return JSON.stringify({
+                const obj = {
                     content: content == null ? '' : String(content),
                     mode: state.mode || 'wysiwyg',
                     caret: c
-                });
+                };
+                if (undoCaret) obj.undoCaret = undoCaret;
+                return JSON.stringify(obj);
             },
 
             _capture() {
@@ -4515,6 +4601,15 @@
                 }
             },
 
+            _undoCaretOf(stateStr) {
+                try {
+                    const o = JSON.parse(stateStr);
+                    return o && (o.undoCaret || o.caret) ? (o.undoCaret || o.caret) : null;
+                } catch (e) {
+                    return null;
+                }
+            },
+
             _push(stateStr, clearRedo) {
                 if (!stateStr) return;
                 if (this.undoStack.length === 0 || this.undoStack[this.undoStack.length - 1] !== stateStr) {
@@ -4522,6 +4617,19 @@
                     if (clearRedo) this.redoStack = [];
                     this._trimStacks();
                 }
+            },
+
+            /** Stamp explicit redo/undo carets on the most recent history frame (formatting edits). */
+            setTopCarets(redoCaret, undoCaret) {
+                if (this.isRestoring || !this.undoStack.length) return;
+                try {
+                    const idx = this.undoStack.length - 1;
+                    const o = JSON.parse(this.undoStack[idx]);
+                    if (!o || typeof o !== 'object') return;
+                    if (redoCaret) o.caret = redoCaret;
+                    if (undoCaret) o.undoCaret = undoCaret;
+                    this.undoStack[idx] = JSON.stringify(o);
+                } catch (e) {}
             },
 
             _flushTimer() {
@@ -4704,7 +4812,7 @@
                         // The caret stored with the state being undone is the edit site,
                         // which is the natural anchor for an undo.
                         let _editCaret = null;
-                        try { _editCaret = this._caretOf(current); } catch (eC) {}
+                        try { _editCaret = this._undoCaretOf(current); } catch (eC) {}
                         this.restore(prevStr, _editCaret, 'undo');
 
                         // Resync top to live serialize so the next Ctrl+Z is not a no-op
@@ -4712,9 +4820,10 @@
                             const actual = getMarkdownContent();
                             const top = this.undoStack[this.undoStack.length - 1];
                             if (top && !this._sameContent(actual, this._contentOf(top))) {
-                                const caret = this._caretOf(top);
+                                let oTop = null;
+                                try { oTop = JSON.parse(top); } catch (eJp) {}
                                 this.undoStack[this.undoStack.length - 1] =
-                                    this._stateFromContent(actual, caret);
+                                    this._stateFromContent(actual, oTop && oTop.caret, oTop && oTop.undoCaret);
                             }
                         } catch (e) {}
                         this._trimStacks();
@@ -4752,9 +4861,10 @@
                         const actual = getMarkdownContent();
                         const top = this.undoStack[this.undoStack.length - 1];
                         if (top && !this._sameContent(actual, this._contentOf(top))) {
-                            const caret = this._caretOf(top);
+                            let oTop = null;
+                            try { oTop = JSON.parse(top); } catch (eJp) {}
                             this.undoStack[this.undoStack.length - 1] =
-                                this._stateFromContent(actual, caret);
+                                this._stateFromContent(actual, oTop && oTop.caret, oTop && oTop.undoCaret);
                         }
                     } catch (e) {}
                 } finally {
@@ -4783,6 +4893,7 @@
                     const block = editor.querySelector('.block[data-model-index="' + (blockIndex | 0) + '"]');
                     if (!block) return;
                     const now = block.textContent || '';
+                    if (now === beforeText) return;
                     // The matching tail first. Where both readings fit -- " very" out of "The
                     // very quick" is also "very " -- this takes the one the typing made, whose
                     // edge is the caret's side of the change.
@@ -4812,11 +4923,13 @@
                     // correction applied afterwards was overwritten a frame later.
                     let caret = caretOverride
                         || (data && data.caret ? data.caret : this._caretOf(stateStr));
+                    const exactCaret = !!(caret && caret.exact);
                     // Where the edited paragraph sits on screen now, if it is on screen. The
                     // reload below loses the scroll position and _restoreCaret used to pin the
                     // paragraph 48 px from the top, so an undo of a change in plain view threw
                     // it to the top of the window (Ed, 2026-09-29). Put it back where it was.
-                    const va = (caret && caret.mode !== 'source') ? editViewAnchor([caret.blockIndex | 0]) : null;
+                    const anchorBi = (caret && caret.anchorIndex != null) ? (caret.anchorIndex | 0) : (caret ? (caret.blockIndex | 0) : 0);
+                    const va = (caret && caret.mode !== 'source') ? editViewAnchor([anchorBi]) : null;
                     const keepTop = va ? va.top : null;
                     // The edited paragraph's text now, to find the change after (_caretAtChange).
                     let beforeText = null;
@@ -4844,7 +4957,7 @@
                             sourceEditor.value = data.content;
                             requestAnimationFrame(resizeSourceEditor);
                             // The caret at the end of what changed, as in Preview (_caretAtChange).
-                            if (srcBefore != null) {
+                            if (!(exactCaret && caret.mode === 'source') && srcBefore != null) {
                                 const now = String(sourceEditor.value || '');
                                 const max = Math.min(now.length, srcBefore.length);
                                 let s = 0;
@@ -4876,10 +4989,10 @@
                         // After loadMarkdownContent DOM is ready; rAF helps focus stick
                         requestAnimationFrame(function () {
                             self._restoreCaret(caret, keepTop);
-                            self._caretAtChange(caret.blockIndex, beforeText, dir);
+                            if (!exactCaret) self._caretAtChange(caret.blockIndex, beforeText, dir);
                         });
                         this._restoreCaret(caret, keepTop);
-                        this._caretAtChange(caret.blockIndex, beforeText, dir);
+                        if (!exactCaret) this._caretAtChange(caret.blockIndex, beforeText, dir);
                     } else if (state.mode !== 'source' && editor && editor.firstElementChild) {
                         currentActiveBlock = editor.firstElementChild;
                     }

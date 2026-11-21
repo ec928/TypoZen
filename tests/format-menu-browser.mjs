@@ -16,7 +16,7 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
-import { settled } from './settle.mjs';
+import { settled, untilPage } from './settle.mjs';
 
 const appDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const deadline = setTimeout(() => { console.error('  FAIL over budget (40 s)'); process.exit(1); }, 40000);
@@ -282,6 +282,168 @@ try {
     await page.evaluate(() => { freezeFormatSelection(); applyFormatting('callout:note'); });
     await settled(page);
     same('chained menu format sees updated block rather than stale freeze', await saved(), '> [!NOTE]\n> ## Chain test');
+
+    console.log('\n=== Undo and Redo of paragraph formats keep a collapsed caret at the end of the block ===');
+    const DOC_U = 'First line\nSecond line here\nThird line';
+    const settleQuick = async () => {
+        await page.evaluate(() => {
+            window.__tzTick = false;
+            setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => { window.__tzTick = true; })), 25);
+        });
+        await untilPage(page, () => window.__tzTick === true, 3000);
+    };
+    const loadQuick = async (md, ext, mode) => {
+        await page.evaluate((m, x, mo) => {
+            setSourceDocExt(x);
+            loadMarkdownContent(m);
+            if (state.mode !== mo) handleCommand('view_set:mode:' + mo);
+        }, md, ext || 'md', mode || 'wysiwyg');
+        await settleQuick();
+    };
+    const undoSnap = () => page.evaluate(() => {
+        const s = getSelection();
+        if (state.mode === 'source') {
+            return { mode: 'source', start: sourceEditor.selectionStart, end: sourceEditor.selectionEnd };
+        }
+        const blk = s && s.anchorNode ? getAncestorBlock(s.anchorNode) : null;
+        const off = blk ? getPlainOffsetsInBlock(blk) : null;
+        return {
+            collapsed: !!(s && s.isCollapsed),
+            blkIdx: blk ? blk.getAttribute('data-model-index') : null,
+            blkLen: blk ? (blk.textContent || '').length : null,
+            off: off ? [off.start, off.end] : null
+        };
+    });
+    const focusAt = (bi, off) => page.evaluate((i, o) => {
+        const el = document.querySelector('#editor .block[data-model-index="' + i + '"]');
+        focusBlock(el, o);
+        snapshotFormatSelectionFromEditor();
+    }, bi, off);
+    const selectPart = (bi, a, z) => page.evaluate((i, s0, s1) => {
+        const el = document.querySelector('#editor .block[data-model-index="' + i + '"]');
+        const t = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode();
+        const r = document.createRange(); r.setStart(t, s0); r.setEnd(t, s1);
+        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+        snapshotFormatSelectionFromEditor();
+        cacheInlineSelection();
+    }, bi, a, z);
+    const selectBlocks = (bi0, bi1) => page.evaluate((i0, i1) => {
+        const b0 = document.querySelector('#editor .block[data-model-index="' + i0 + '"]');
+        const b1 = document.querySelector('#editor .block[data-model-index="' + i1 + '"]');
+        const t0 = document.createTreeWalker(b0, NodeFilter.SHOW_TEXT).nextNode();
+        const t1 = document.createTreeWalker(b1, NodeFilter.SHOW_TEXT).nextNode();
+        const r = document.createRange(); r.setStart(t0, 0); r.setEnd(t1, t1.nodeValue.length);
+        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+        snapshotFormatSelectionFromEditor();
+    }, bi0, bi1);
+    const checkEndCaret = (st, wantIdx, label) => {
+        same(label + ' collapsed at end of block ' + wantIdx,
+            st.collapsed && st.blkIdx === String(wantIdx) && st.off && st.off[0] === st.blkLen && st.off[1] === st.blkLen,
+            true);
+    };
+
+    for (const [cmd, preDoc, wantUndoIdx, wantRedoIdx, wantPostDoc] of [
+        ['h2', DOC_U, 1, 1, 'First line\n## Second line here\nThird line'],
+        ['quote', DOC_U, 1, 1, 'First line\n> Second line here\nThird line'],
+        ['para', 'First line\n## Second line here\nThird line', 1, 1, DOC_U],
+        ['callout:note', DOC_U, 1, 2, 'First line\n> [!NOTE]\n> Second line here\n\nThird line'],
+        ['list', DOC_U, 1, 1, 'First line\n- Second line here\nThird line'],
+        ['ol', DOC_U, 1, 1, 'First line\n1. Second line here\nThird line'],
+        ['checklist', DOC_U, 1, 1, 'First line\n- [ ] Second line here\nThird line']
+    ]) {
+        await loadQuick(preDoc);
+        await focusAt(1, 5);
+        await page.evaluate((c) => { freezeFormatSelection(); applyFormatting(c); }, cmd);
+        await settleQuick();
+        same(cmd + ' format doc matches', await saved(), wantPostDoc);
+        await page.evaluate(() => HistoryManager.undo());
+        await settleQuick();
+        same(cmd + ' Undo restores preDoc', await saved(), preDoc);
+        checkEndCaret(await undoSnap(), wantUndoIdx, cmd + ' Undo');
+        await page.evaluate(() => HistoryManager.redo());
+        await settleQuick();
+        same(cmd + ' Redo restores postDoc', await saved(), wantPostDoc);
+        checkEndCaret(await undoSnap(), wantRedoIdx, cmd + ' Redo');
+        await page.keyboard.type('!');
+        await settleQuick();
+        same(cmd + ' typing after Redo appends at end of block', await saved(),
+            wantPostDoc.replace('Second line here', 'Second line here!'));
+    }
+
+    for (const [cmd, wantRedoIdx, wantPostDoc] of [
+        ['h2', 1, '## First line\n## Second line here\nThird line'],
+        ['quote', 1, '> First line\n> Second line here\nThird line'],
+        ['callout:note', 2, '> [!NOTE]\n> First line\n> Second line here\n\nThird line'],
+        ['list', 1, '- First line\n- Second line here\nThird line']
+    ]) {
+        await loadQuick(DOC_U);
+        await selectBlocks(0, 1);
+        await page.evaluate((c) => { freezeFormatSelection(); applyFormatting(c); }, cmd);
+        await settleQuick();
+        await page.evaluate(() => HistoryManager.undo());
+        await settleQuick();
+        checkEndCaret(await undoSnap(), 1, 'multi ' + cmd + ' Undo');
+        await page.evaluate(() => HistoryManager.redo());
+        await settleQuick();
+        checkEndCaret(await undoSnap(), wantRedoIdx, 'multi ' + cmd + ' Redo');
+        same('multi ' + cmd + ' Redo doc', await saved(), wantPostDoc);
+    }
+
+    for (const [cmd, wantRedoIdx] of [['h2', 1], ['quote', 1], ['callout:note', 2]]) {
+        await loadQuick(DOC_U);
+        await selectPart(1, 7, 11);
+        await page.evaluate((c) => { freezeFormatSelection(); applyFormatting(c); }, cmd);
+        await settleQuick();
+        await page.evaluate(() => HistoryManager.undo());
+        await settleQuick();
+        checkEndCaret(await undoSnap(), 1, 'partial ' + cmd + ' Undo');
+        await page.evaluate(() => HistoryManager.redo());
+        await settleQuick();
+        checkEndCaret(await undoSnap(), wantRedoIdx, 'partial ' + cmd + ' Redo');
+        await page.evaluate(() => HistoryManager.undo());
+        await settleQuick();
+        await page.keyboard.type('!');
+        await settleQuick();
+        same('partial ' + cmd + ' typing after Undo appends at end', await saved(), 'First line\nSecond line here!\nThird line');
+    }
+
+    await loadQuick(DOC_U);
+    await selectPart(1, 7, 11);
+    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('bold'); });
+    await settleQuick();
+    await page.evaluate(() => HistoryManager.undo());
+    await settleQuick();
+    const boldU = await undoSnap();
+    same('inline bold Undo places collapsed caret at span end (11)', boldU.collapsed && boldU.blkIdx === '1' && boldU.off[0] === 11, true);
+    await page.evaluate(() => HistoryManager.redo());
+    await settleQuick();
+    const boldR = await undoSnap();
+    same('inline bold Redo places collapsed caret at span end (11)', boldR.collapsed && boldR.blkIdx === '1' && boldR.off[0] === 11, true);
+
+    await loadQuick(DOC_U, 'md', 'source');
+    await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(16, 16); applyFormatting('h2'); });
+    await settleQuick();
+    await page.evaluate(() => HistoryManager.undo());
+    await settleQuick();
+    const srcH2U = await undoSnap();
+    same('Source h2 Undo places caret at end of restored line (27)', srcH2U.start === 27 && srcH2U.end === 27, true);
+    await page.evaluate(() => HistoryManager.redo());
+    await settleQuick();
+    const srcH2R = await undoSnap();
+    same('Source h2 Redo places caret at end of heading line (30)', srcH2R.start === 30 && srcH2R.end === 30, true);
+
+    await loadQuick(DOC_U, 'md', 'source');
+    await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(16, 16); applyFormatting('callout:note'); });
+    await settleQuick();
+    await page.evaluate(() => HistoryManager.undo());
+    await settleQuick();
+    const srcCoU = await undoSnap();
+    same('Source callout Undo places caret at end of restored line (27)', srcCoU.start === 27 && srcCoU.end === 27, true);
+    await page.evaluate(() => HistoryManager.redo());
+    await settleQuick();
+    const srcCoR = await undoSnap();
+    same('Source callout Redo places caret at end of body line (39)', srcCoR.start === 39 && srcCoR.end === 39, true);
+    await loadQuick('plain', 'md', 'wysiwyg');
 
     console.log('\n=== Alt underlines the menus\' access keys while held ===');
     await load('Some text');

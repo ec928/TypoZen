@@ -1112,6 +1112,13 @@
             updateStats();
             updateOutline();
             HistoryManager.commitEdit();
+            try {
+                const bi = typeof formatBlockIndex === 'function' ? formatBlockIndex(block) : -1;
+                if (bi >= 0 && typeof HistoryManager !== 'undefined' && typeof HistoryManager.setTopCarets === 'function') {
+                    const c = { mode: 'wysiwyg', blockIndex: bi, offset: offsets.end, exact: true };
+                    HistoryManager.setTopCarets(c, c);
+                }
+            } catch (eHc) {}
             return true;
         }
 
