@@ -237,6 +237,21 @@ try {
     await sleep(150);
     invokeMenuPath(['Edit', 'Copy']); await sleep(450);
     check('Find bar Edit > Copy', getClip() === 'needle', 'clip=' + JSON.stringify(getClip()));
+
+    setRichClip('REPL', '<b>REPL</b>');
+    await app.eval(() => { const i = document.getElementById('findInput'); i.focus(); i.value = 'aXc'; i.setSelectionRange(1, 2); });
+    await sleep(150);
+    invokeMenuPath(['Edit', 'Paste']); await sleep(450);
+    const findAfterPaste = await app.eval(() => ({ val: document.getElementById('findInput').value, doc: getMarkdownContent(false) }));
+    check('Find bar Edit > Paste puts plain text in Find input without touching doc',
+        findAfterPaste.val === 'aREPLc' && findAfterPaste.doc === DOC, JSON.stringify(findAfterPaste));
+
+    setClip('S_FIND_ALL');
+    await app.eval(() => { const i = document.getElementById('findInput'); i.focus(); i.value = 'wholefind'; i.setSelectionRange(2, 2); });
+    await sleep(150);
+    invokeMenuPath(['Edit', 'Select All']); await sleep(300);
+    invokeMenuPath(['Edit', 'Copy']); await sleep(450);
+    check('Find bar Edit > Select All -> Edit > Copy', getClip() === 'wholefind', 'clip=' + JSON.stringify(getClip()));
     await app.eval(() => { if (typeof closeFindBar === 'function') closeFindBar(); });
 
     console.log('\n=== Source right-click Copy / Cut / Paste ===');
@@ -268,7 +283,12 @@ try {
         'clip=' + JSON.stringify(getClip()) + ' doc=' + JSON.stringify(await getDoc()));
 
     setClip('RESTORED');
-    await app.page.mouse.click(srcPt.x, srcPt.y, { button: 'right' }); await sleep(300);
+    const srcPastePt = await app.eval(() => {
+        const lines = document.querySelectorAll('.cm-line');
+        const box = lines[2] ? lines[2].getBoundingClientRect() : document.querySelector('.cm-content').getBoundingClientRect();
+        return { x: box.left + 2, y: box.top + box.height / 2 };
+    });
+    await app.page.mouse.click(srcPastePt.x, srcPastePt.y, { button: 'right' }); await sleep(300);
     invokeMenuPath(['Paste']); await sleep(400);
     check('Source RC Paste', (await getDoc()).includes('\n\nRESTORED line\nBeta line'), 'doc=' + JSON.stringify(await getDoc()));
 } finally {

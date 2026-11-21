@@ -4754,59 +4754,112 @@
                     if (!caret.exact) return caret;
                     const blocks = (typeof DocumentModel !== 'undefined' && DocumentModel.blocks)
                         ? DocumentModel.blocks : [];
-                    let bi = caret.blockIndex | 0;
-                    if (bi < 0) bi = 0;
-                    if (blocks.length && bi >= blocks.length) bi = blocks.length - 1;
-                    const startLine1 = (typeof modelBlockStartLine === 'function')
-                        ? modelBlockStartLine(bi) : (bi + 1);
-                    const bl = (blocks[bi] && typeof linesInBlockRaw === 'function')
-                        ? linesInBlockRaw(blocks[bi].raw) : 1;
-                    const targetLine1 = caret.endOfBlock
-                        ? (startLine1 + Math.max(0, bl - 1))
-                        : startLine1;
-                    let lineStart = 0;
-                    let curLine = 1;
-                    while (curLine < targetLine1 && lineStart < md.length) {
-                        const nl = md.indexOf('\n', lineStart);
-                        if (nl < 0) {
-                            lineStart = md.lastIndexOf('\n') + 1;
-                            break;
+                    const previewPointToSourceOff = function (rawBi, plainOff, isEndOfBlock) {
+                        let bi = rawBi | 0;
+                        if (bi < 0) bi = 0;
+                        if (blocks.length && bi >= blocks.length) bi = blocks.length - 1;
+                        const startLine1 = (typeof modelBlockStartLine === 'function')
+                            ? modelBlockStartLine(bi) : (bi + 1);
+                        const bl = (blocks[bi] && typeof linesInBlockRaw === 'function')
+                            ? linesInBlockRaw(blocks[bi].raw) : 1;
+                        const targetLine1 = isEndOfBlock
+                            ? (startLine1 + Math.max(0, bl - 1))
+                            : startLine1;
+                        let lineStart = 0;
+                        let curLine = 1;
+                        while (curLine < targetLine1 && lineStart < md.length) {
+                            const nl = md.indexOf('\n', lineStart);
+                            if (nl < 0) {
+                                lineStart = md.lastIndexOf('\n') + 1;
+                                break;
+                            }
+                            lineStart = nl + 1;
+                            curLine++;
                         }
-                        lineStart = nl + 1;
-                        curLine++;
+                        let lineEnd = md.indexOf('\n', lineStart);
+                        if (lineEnd < 0) lineEnd = md.length;
+                        if (isEndOfBlock) return lineEnd;
+                        const info = mapLineBody(md.slice(lineStart, lineEnd));
+                        const want = Math.max(0, plainOff | 0);
+                        const rawInBody = want < info.p2r.length ? info.p2r[want] : info.bodyLen;
+                        return Math.min(lineEnd, lineStart + info.prefixLen + rawInBody);
+                    };
+                    if (!caret.endOfBlock && caret.pts && caret.pts.a && caret.pts.f) {
+                        const ptPlainOff = function (pt) {
+                            const off = pt.offset != null ? (pt.offset | 0) : (caret.offset | 0);
+                            if (pt.text != null && blocks[pt.index] && typeof plainAndMarksFromMarkdown === 'function' && typeof formatCaretMapOffset === 'function') {
+                                const sp0 = (typeof splitInlineFormatPrefix === 'function') ? splitInlineFormatPrefix(blocks[pt.index].raw) : { prefix: '', body: blocks[pt.index].raw };
+                                let b0 = sp0.body;
+                                if (sp0.prefix && /^#/.test(sp0.prefix)) b0 = b0.replace(/\s+#+\s*$/, '');
+                                const plainB0 = plainAndMarksFromMarkdown(b0).plain;
+                                if (plainB0 !== pt.text) return formatCaretMapOffset(pt.text, plainB0, off);
+                            }
+                            return off;
+                        };
+                        const aOff = previewPointToSourceOff(caret.pts.a.index, ptPlainOff(caret.pts.a), false);
+                        const fOff = previewPointToSourceOff(caret.pts.f.index, ptPlainOff(caret.pts.f), false);
+                        return {
+                            mode: 'source',
+                            start: Math.min(aOff, fOff),
+                            end: Math.max(aOff, fOff),
+                            dir: fOff < aOff ? 'backward' : 'forward',
+                            exact: true
+                        };
                     }
-                    let lineEnd = md.indexOf('\n', lineStart);
-                    if (lineEnd < 0) lineEnd = md.length;
-                    if (caret.endOfBlock) {
-                        return { mode: 'source', start: lineEnd, end: lineEnd, endOfBlock: true, exact: true };
-                    }
-                    const info = mapLineBody(md.slice(lineStart, lineEnd));
-                    const want = Math.max(0, caret.offset | 0);
-                    const rawInBody = want < info.p2r.length ? info.p2r[want] : info.bodyLen;
-                    const srcOff = Math.min(lineEnd, lineStart + info.prefixLen + rawInBody);
-                    return { mode: 'source', start: srcOff, end: srcOff, exact: true };
+                    const srcOff = previewPointToSourceOff(caret.blockIndex, caret.offset, !!caret.endOfBlock);
+                    const res = { mode: 'source', start: srcOff, end: srcOff, exact: true };
+                    if (caret.endOfBlock) res.endOfBlock = true;
+                    return res;
                 }
                 if (targetMode !== 'source' && caret.mode === 'source') {
+                    const sourceOffToPreviewPoint = function (rawPos) {
+                        let pos = rawPos | 0;
+                        if (pos < 0) pos = 0;
+                        if (pos > md.length) pos = md.length;
+                        const line1 = (typeof lineFromMarkdownOffset === 'function')
+                            ? lineFromMarkdownOffset(md, pos) : 1;
+                        const loc = (typeof modelLocationFromDocumentLine === 'function')
+                            ? modelLocationFromDocumentLine(line1) : { blockIndex: 0, within: 0 };
+                        const bi = loc ? (loc.blockIndex | 0) : 0;
+                        let lineStart = pos;
+                        while (lineStart > 0 && md.charCodeAt(lineStart - 1) !== 10) lineStart--;
+                        let lineEnd = pos;
+                        while (lineEnd < md.length && md.charCodeAt(lineEnd) !== 10) lineEnd++;
+                        const lineRaw = md.slice(lineStart, lineEnd);
+                        const info = mapLineBody(lineRaw);
+                        const relRaw = Math.max(0, (pos - lineStart) - info.prefixLen);
+                        let p = 0;
+                        while (p < info.p2r.length && info.p2r[p] < relRaw) p++;
+                        const pt = { index: bi, offset: p };
+                        if (typeof plainAndMarksFromMarkdown === 'function') {
+                            const sp = (typeof splitInlineFormatPrefix === 'function') ? splitInlineFormatPrefix(lineRaw) : { prefix: '', body: lineRaw };
+                            let b = sp.body;
+                            if (sp.prefix && /^#/.test(sp.prefix)) b = b.replace(/\s+#+\s*$/, '');
+                            pt.text = plainAndMarksFromMarkdown(b).plain;
+                        }
+                        return pt;
+                    };
+                    if (!caret.endOfBlock && caret.start != null && caret.end != null && caret.start !== caret.end) {
+                        const back = caret.dir === 'backward';
+                        const ptA = sourceOffToPreviewPoint(back ? caret.end : caret.start);
+                        const ptF = sourceOffToPreviewPoint(back ? caret.start : caret.end);
+                        return {
+                            mode: 'wysiwyg',
+                            blockIndex: ptF.index,
+                            offset: ptF.offset,
+                            anchorIndex: ptA.index,
+                            pts: { a: ptA, f: ptF },
+                            exact: !!caret.exact
+                        };
+                    }
                     let pos = caret.end != null ? (caret.end | 0) : (caret.start | 0);
                     if (pos < 0) pos = 0;
                     if (pos > md.length) pos = md.length;
-                    const line1 = (typeof lineFromMarkdownOffset === 'function')
-                        ? lineFromMarkdownOffset(md, pos) : 1;
-                    const loc = (typeof modelLocationFromDocumentLine === 'function')
-                        ? modelLocationFromDocumentLine(line1) : { blockIndex: 0, within: 0 };
-                    const bi = loc ? (loc.blockIndex | 0) : 0;
+                    const pt = sourceOffToPreviewPoint(pos);
                     if (caret.endOfBlock) {
-                        return { mode: 'wysiwyg', blockIndex: bi, endOfBlock: true, exact: !!caret.exact };
+                        return { mode: 'wysiwyg', blockIndex: pt.index, endOfBlock: true, exact: !!caret.exact };
                     }
-                    let lineStart = pos;
-                    while (lineStart > 0 && md.charCodeAt(lineStart - 1) !== 10) lineStart--;
-                    let lineEnd = pos;
-                    while (lineEnd < md.length && md.charCodeAt(lineEnd) !== 10) lineEnd++;
-                    const info = mapLineBody(md.slice(lineStart, lineEnd));
-                    const relRaw = Math.max(0, (pos - lineStart) - info.prefixLen);
-                    let p = 0;
-                    while (p < info.p2r.length && info.p2r[p] < relRaw) p++;
-                    return { mode: 'wysiwyg', blockIndex: bi, offset: p, exact: !!caret.exact };
+                    return { mode: 'wysiwyg', blockIndex: pt.index, offset: pt.offset, exact: !!caret.exact };
                 }
                 return caret;
             },

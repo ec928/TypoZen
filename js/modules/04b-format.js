@@ -904,19 +904,31 @@
                 else if (type === 'code') { open = '`'; close = '`'; }
                 else if (type === 'strike') { open = '~~'; close = '~~'; }
                 else if (type === 'link') {
+                    const hadSel = end > start;
                     const inner0 = full.slice(start, end) || 'Link Text';
                     const inner = (_pendingLink && _pendingLink.text) || inner0;
                     const lu = (_pendingLink && _pendingLink.url) || 'https://';
                     const linkRep = '[' + inner + '](' + lu + ')';
                     HistoryManager.beginEdit();
-                    sourceSetRangeTextPreserveScroll(linkRep, start, end, 'select');
-                    // The link's text stays selected, not its brackets and address, as in Preview.
-                    try { sourceEditor.setSelectionRange(start + 1, start + 1 + inner.length); } catch (eLs) {}
-                    _sourceFormatSel = { start: start + 1, end: start + 1 + inner.length };
-                    resizeSourceEditor();
-                    updateStats();
-                    HistoryManager.commitEdit();
-                    stampSrcInlineCaret(start + 1 + inner.length, end, false);
+                    if (!hadSel) {
+                        const afterLink = start + linkRep.length;
+                        sourceSetRangeTextPreserveScroll(linkRep, start, end, 'end');
+                        try { sourceEditor.setSelectionRange(afterLink, afterLink); } catch (eLs) {}
+                        _sourceFormatSel = null;
+                        resizeSourceEditor();
+                        updateStats();
+                        HistoryManager.commitEdit();
+                        stampSrcInlineCaret(afterLink, end, false);
+                    } else {
+                        sourceSetRangeTextPreserveScroll(linkRep, start, end, 'select');
+                        // The link's text stays selected, not its brackets and address, as in Preview.
+                        try { sourceEditor.setSelectionRange(start + 1, start + 1 + inner.length); } catch (eLs) {}
+                        _sourceFormatSel = { start: start + 1, end: start + 1 + inner.length };
+                        resizeSourceEditor();
+                        updateStats();
+                        HistoryManager.commitEdit();
+                        stampSrcInlineCaret(start + 1 + inner.length, end, false);
+                    }
                     return true;
                 }
                 let inner = full.slice(start, end);
@@ -1201,10 +1213,13 @@
                 if (!nextTable || nextTable === rawTable) return false;
                 const oldCellPlainLen = plainRangeToRawOffsets(cellRaw, 0, 0).plainLength;
                 const newCellPlainLen = plainRangeToRawOffsets(nextCell, 0, 0).plainLength;
+                const endTablePos = Math.max(offsets.start, offsets.end + (newCellPlainLen - oldCellPlainLen));
+                const emptyLink = type === 'link' && offsets.start === offsets.end;
                 const adjTableOffsets = {
-                    start: offsets.start,
-                    end: Math.max(offsets.start, offsets.end + (newCellPlainLen - oldCellPlainLen)),
-                    text: offsets.text
+                    start: emptyLink ? endTablePos : offsets.start,
+                    end: endTablePos,
+                    text: offsets.text,
+                    afterLink: emptyLink
                 };
                 return commitInlineFormatToBlock(block, nextTable, adjTableOffsets);
             }
@@ -1225,10 +1240,13 @@
             };
             const oldPlainLen = plainRangeToRawOffsets(stripInlineAffixes(raw), 0, 0).plainLength;
             const newPlainLen = plainRangeToRawOffsets(stripInlineAffixes(next), 0, 0).plainLength;
+            const endBlockPos = Math.max(offsets.start, offsets.end + (newPlainLen - oldPlainLen));
+            const emptyLink = type === 'link' && offsets.start === offsets.end;
             const adjustedOffsets = {
-                start: offsets.start,
-                end: Math.max(offsets.start, offsets.end + (newPlainLen - oldPlainLen)),
-                text: offsets.text
+                start: emptyLink ? endBlockPos : offsets.start,
+                end: endBlockPos,
+                text: offsets.text,
+                afterLink: emptyLink
             };
             return commitInlineFormatToBlock(block, next, adjustedOffsets);
         }
@@ -1246,6 +1264,24 @@
                 block.scrollIntoView({ block: 'nearest' });
                 focusBlock(block, null);
                 selectPlainRangeInBlock(block, offsets.start, offsets.end);
+                if (offsets.afterLink) {
+                    const selAfter = window.getSelection();
+                    const anc = selAfter && selAfter.anchorNode;
+                    const aEl = anc ? (anc.nodeType === 1 ? anc : anc.parentElement) : null;
+                    const linkNode = aEl && aEl.closest ? aEl.closest('a') : null;
+                    if (linkNode && block.contains(linkNode)) {
+                        const rAfter = document.createRange();
+                        if (linkNode.nextSibling && linkNode.nextSibling.nodeType === 3) {
+                            rAfter.setStart(linkNode.nextSibling, 0);
+                        } else {
+                            rAfter.setStartAfter(linkNode);
+                        }
+                        rAfter.collapse(true);
+                        selAfter.removeAllRanges();
+                        selAfter.addRange(rAfter);
+                        cacheInlineSelection();
+                    }
+                }
             } catch (e) {}
             updateStats();
             updateOutline();

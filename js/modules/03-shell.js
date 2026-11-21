@@ -2514,11 +2514,22 @@
                 postViewState(currentViewState());
             }
             else if (cmd === "select_all") {
-                // Edit > Select All. The keyboard already works -- Source is a textarea
-                // that selects itself, and Ctrl+A in Preview is handled in 05-model --
-                // but the menu has to reach both surfaces without the caret being in
-                // either, which is the state you are in having just used the mouse.
-                if (state.mode === 'source' && sourceEditor) {
+                // Edit > Select All. Route to any active or recently-focused UI input (Find bar /
+                // Search sidebar) first, then Source or Preview.
+                let uiInput = document.activeElement;
+                if (!(uiInput && (uiInput.tagName === 'INPUT' || uiInput.tagName === 'TEXTAREA')
+                    && uiInput !== sourceEditor && (!editor || !editor.contains(uiInput)))) {
+                    const last = window.__tzLastUiInput;
+                    if (last && last.isConnected && !last.closest('[hidden]') && last.getClientRects().length > 0
+                        && last !== sourceEditor && (!editor || !editor.contains(last))) {
+                        uiInput = last;
+                    } else {
+                        uiInput = null;
+                    }
+                }
+                if (uiInput && typeof uiInput.select === 'function') {
+                    try { uiInput.focus(); uiInput.select(); } catch (eUi) {}
+                } else if (state.mode === 'source' && sourceEditor) {
                     try { sourceEditor.focus(); sourceEditor.select(); } catch (eSa) {}
                 } else if (typeof selectAllDocument === 'function') {
                     try { if (editor) editor.focus(); } catch (eF) {}

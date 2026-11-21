@@ -856,7 +856,74 @@ try {
     const findCut = await page.evaluate(() => tzMenuCopyOrCut(true));
     const findValAfter = await page.evaluate(() => document.getElementById('findInput').value);
     same('Find bar blurred Cut removes "needle"', findCut.text === 'needle' && findValAfter === '', true);
+    await page.evaluate(() => {
+        const i = document.getElementById('findInput');
+        i.focus(); i.value = 'abc'; i.setSelectionRange(1, 2); i.blur();
+    });
+    await page.evaluate(() => pasteLikeCtrlV('<b>XYZ</b>', 'XYZ', false));
+    const findPaste = await page.evaluate(() => ({ val: document.getElementById('findInput').value, doc: getMarkdownContent(false) }));
+    same('Find bar blurred rich Paste puts plain text into Find input only',
+        findPaste.val === 'aXYZc' && findPaste.doc === 'Alpha beta', true);
+    await page.evaluate(() => {
+        const i = document.getElementById('findInput');
+        i.focus(); i.value = 'hello'; i.setSelectionRange(2, 2); i.blur();
+        handleCommand('select_all');
+    });
+    const findSelAll = await page.evaluate(() => {
+        const i = document.getElementById('findInput');
+        return [i.selectionStart, i.selectionEnd];
+    });
+    same('Find bar blurred Select All selects #findInput', findSelAll[0] === 0 && findSelAll[1] === 5, true);
     await page.evaluate(() => { if (typeof closeFindBar === 'function') closeFindBar(); });
+
+    console.log('\n=== Link empty-sel caret, code-file paste, and cross-mode selection Undo/Redo ===');
+    for (const mode of ['wysiwyg', 'source']) {
+        await loadQuick('Hello world', 'md', mode);
+        if (mode === 'source') await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(6, 6); });
+        else await focusAt(0, 6);
+        await page.evaluate(() => { freezeFormatSelection(); applyFormatting('link'); });
+        await page.waitForSelector('#linkModal:not([hidden])', { timeout: 3000 });
+        await page.focus('#linkModalText'); await page.keyboard.type('docs');
+        await page.focus('#linkModalHref'); await page.keyboard.type('https://a.test');
+        await page.keyboard.press('Enter');
+        await settleQuick();
+        await page.keyboard.type('!');
+        await settleQuick();
+        same(mode + ' Link with nothing selected leaves caret after link text', await saved(), 'Hello [docs](https://a.test)!world');
+    }
+
+    await loadQuick('int x = 1;', 'cs', 'source');
+    await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(10, 10); });
+    await page.evaluate(() => pasteLikeCtrlV('<span style="font-weight:bold">int</span> <b>y</b> = 2;', 'int y = 2;', false));
+    same('Code file (.cs) rich HTML paste stays plain text', await saved(), 'int x = 1;int y = 2;');
+
+    await loadQuick('First line\nSecond line here\nThird line', 'md', 'wysiwyg');
+    await selectPart(1, 0, 6);
+    await page.evaluate(() => { freezeFormatSelection(); applyFormatting('h2'); });
+    await settleQuick();
+    await page.evaluate(() => handleCommand('view_set:mode:source'));
+    await settleQuick();
+    await page.evaluate(() => HistoryManager.undo());
+    await settleQuick();
+    const xmU = await page.evaluate(() => sourceEditor.value.slice(sourceEditor.selectionStart, sourceEditor.selectionEnd));
+    await page.evaluate(() => HistoryManager.redo());
+    await settleQuick();
+    const xmR = await page.evaluate(() => sourceEditor.value.slice(sourceEditor.selectionStart, sourceEditor.selectionEnd));
+    same('Preview partial sel h2 -> Source Undo & Redo keeps "Second" selected', xmU === 'Second' && xmR === 'Second', true);
+
+    await loadQuick('First line\nSecond line here\nThird line', 'md', 'source');
+    await page.evaluate(() => { sourceEditor.focus(); sourceEditor.setSelectionRange(11, 17); applyFormatting('h2'); });
+    await settleQuick();
+    await page.evaluate(() => handleCommand('view_set:mode:wysiwyg'));
+    await settleQuick();
+    await page.evaluate(() => HistoryManager.undo());
+    await settleQuick();
+    const xm2U = await page.evaluate(() => ({ col: getSelection().isCollapsed, txt: getSelection().toString() }));
+    await page.evaluate(() => HistoryManager.redo());
+    await settleQuick();
+    const xm2R = await page.evaluate(() => ({ col: getSelection().isCollapsed, txt: getSelection().toString() }));
+    same('Source partial sel h2 -> Preview Undo & Redo keeps "Second" selected',
+        !xm2U.col && xm2U.txt === 'Second' && !xm2R.col && xm2R.txt === 'Second', true);
 } finally {
     await browser.close();
     clearTimeout(deadline);

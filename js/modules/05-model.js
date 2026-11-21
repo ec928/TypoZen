@@ -2868,11 +2868,35 @@
          * plainOnly is Paste as Plain Text. Works in Source too (insertPastedPlainText).
          */
         function pasteLikeCtrlV(html, plain, plainOnly) {
+            let uiInput = document.activeElement;
+            if (!(uiInput && (uiInput.tagName === 'INPUT' || uiInput.tagName === 'TEXTAREA')
+                && uiInput !== sourceEditor && (!editor || !editor.contains(uiInput)))) {
+                const last = window.__tzLastUiInput;
+                if (last && last.isConnected && !last.closest('[hidden]') && last.getClientRects().length > 0
+                    && last !== sourceEditor && (!editor || !editor.contains(last))) {
+                    uiInput = last;
+                } else {
+                    uiInput = null;
+                }
+            }
+            if (uiInput && !uiInput.readOnly && !uiInput.disabled) {
+                const uiText = plain != null && String(plain) !== ''
+                    ? String(plain)
+                    : (html ? String(htmlToMarkdown(html) || '') : '');
+                if (!uiText) return;
+                try { uiInput.focus(); } catch (eF) {}
+                const s = uiInput.selectionStart | 0;
+                const e = uiInput.selectionEnd | 0;
+                uiInput.setRangeText(uiText, s, e, 'end');
+                uiInput.dispatchEvent(new Event('input', { bubbles: true }));
+                return;
+            }
             // Try HTML first for external rich content (browser pages, Word, etc.)
-            // Skip if it's TypoZen's own copy (marked with data-source="typozen")
+            // Skip if it's TypoZen's own copy (marked with data-source="typozen") or code/data files
+            const allowMarkdown = typeof takesMarkdownFormatting !== 'function' || takesMarkdownFormatting();
             let text = '';
             let fromHtml = false;
-            if (!plainOnly && html && html.indexOf('data-source="typozen"') === -1) {
+            if (!plainOnly && allowMarkdown && html && html.indexOf('data-source="typozen"') === -1) {
                 text = htmlToMarkdown(html);
                 fromHtml = !!text;
             }
