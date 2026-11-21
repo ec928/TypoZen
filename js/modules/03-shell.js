@@ -2798,8 +2798,13 @@
                 // key filter for the same key; toggling made a working F1 look dead.
                 closeTzOverlay('aboutModal');
                 closeTzOverlay('narrHelpModal');
+                if (typeof window.tzResetHelpFilter === 'function') window.tzResetHelpFilter();
                 if (!isTzOverlayOpen('helpModal'))
                     openTzOverlay('helpModal', 'helpClose', 'helpOk');
+                try {
+                    const hf = document.getElementById('helpFilter');
+                    if (hf) hf.focus();
+                } catch (eHf) {}
             }
             else if (cmd.startsWith("help_narration")) {
                 // Help > Narration: only what the installed narrators do (help_narration:qwen,breeze).
@@ -3032,6 +3037,100 @@
             }
             wireGuide('narrHelpGuide', 'narrHelpModal');
             wireGuide('aboutGuide', 'aboutModal');
+            wireGuide('helpGuide', 'helpModal');
+
+            // Syntax & Shortcuts: category tabs, live filter, and click-to-copy syntax snippets.
+            (function () {
+                const modal = document.getElementById('helpModal');
+                if (!modal) return;
+                const filterInput = document.getElementById('helpFilter');
+                const tabs = Array.prototype.slice.call(modal.querySelectorAll('.tz-syn-tab'));
+                const cards = Array.prototype.slice.call(modal.querySelectorAll('.tz-syn-card'));
+                const emptyMsg = document.getElementById('helpEmpty');
+                let activeCat = 'all';
+
+                function applyHelpFilter() {
+                    const q = filterInput ? String(filterInput.value || '').trim().toLowerCase() : '';
+                    let shownCards = 0;
+                    for (let c = 0; c < cards.length; c++) {
+                        const card = cards[c];
+                        const cats = String(card.getAttribute('data-cat') || '').split(/\s+/);
+                        const catOk = activeCat === 'all' || cats.indexOf(activeCat) >= 0;
+                        if (!catOk) {
+                            card.hidden = true;
+                            continue;
+                        }
+                        const h3 = card.querySelector('h3');
+                        const headMatch = q && h3 && (h3.textContent || '').toLowerCase().indexOf(q) >= 0;
+                        const rows = card.querySelectorAll('tbody tr');
+                        let anyRow = false;
+                        for (let r = 0; r < rows.length; r++) {
+                            const row = rows[r];
+                            const show = !q || headMatch || (row.textContent || '').toLowerCase().indexOf(q) >= 0;
+                            row.hidden = !show;
+                            if (show) anyRow = true;
+                        }
+                        card.hidden = !anyRow;
+                        if (anyRow) shownCards++;
+                    }
+                    if (emptyMsg) emptyMsg.hidden = shownCards > 0;
+                }
+
+                window.tzResetHelpFilter = function () {
+                    activeCat = 'all';
+                    for (let i = 0; i < tabs.length; i++) {
+                        const isAll = tabs[i].getAttribute('data-cat') === 'all';
+                        tabs[i].classList.toggle('active', isAll);
+                        tabs[i].setAttribute('aria-selected', isAll ? 'true' : 'false');
+                    }
+                    if (filterInput) filterInput.value = '';
+                    applyHelpFilter();
+                };
+
+                if (filterInput) {
+                    filterInput.addEventListener('input', applyHelpFilter);
+                }
+                for (let i = 0; i < tabs.length; i++) {
+                    tabs[i].addEventListener('click', function () {
+                        activeCat = this.getAttribute('data-cat') || 'all';
+                        for (let j = 0; j < tabs.length; j++) {
+                            const on = tabs[j] === this;
+                            tabs[j].classList.toggle('active', on);
+                            tabs[j].setAttribute('aria-selected', on ? 'true' : 'false');
+                        }
+                        applyHelpFilter();
+                    });
+                }
+
+                modal.addEventListener('click', function (e) {
+                    const btn = e.target && e.target.closest ? e.target.closest('.tz-syn-copy') : null;
+                    if (!btn) return;
+                    const txt = btn.getAttribute('data-copy');
+                    if (txt == null) return;
+                    const markCopied = function () {
+                        btn.classList.add('copied');
+                        if (btn.__tzCopyTimer) clearTimeout(btn.__tzCopyTimer);
+                        btn.__tzCopyTimer = setTimeout(function () { btn.classList.remove('copied'); }, 900);
+                    };
+                    const fallbackCopy = function () {
+                        try {
+                            const ta = document.createElement('textarea');
+                            ta.value = txt;
+                            ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none;';
+                            document.body.appendChild(ta);
+                            ta.select();
+                            document.execCommand('copy');
+                            ta.remove();
+                            markCopied();
+                        } catch (eFb) {}
+                    };
+                    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                        navigator.clipboard.writeText(txt).then(markCopied, fallbackCopy);
+                    } else {
+                        fallbackCopy();
+                    }
+                });
+            })();
 
             // About -> "Report a problem or suggest a feature".
             //
@@ -3080,6 +3179,13 @@
                 if (isTzOverlayOpen('helpModal')) {
                     e.preventDefault();
                     e.stopPropagation();
+                    const hf = document.getElementById('helpFilter');
+                    if (hf && hf.value) {
+                        hf.value = '';
+                        hf.dispatchEvent(new Event('input'));
+                        hf.focus();
+                        return;
+                    }
                     closeTzOverlay('helpModal');
                 }
             }, true);

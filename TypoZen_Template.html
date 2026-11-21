@@ -374,101 +374,177 @@
 
     <!-- Help: syntax + shortcuts (replaces browser alert) -->
     <div id="helpModal" class="tz-help-overlay" hidden role="presentation">
-        <div class="tz-help-panel" role="dialog" aria-modal="true" aria-labelledby="helpTitle" tabindex="-1">
+        <div class="tz-help-panel tz-syntax-panel" role="dialog" aria-modal="true" aria-labelledby="helpTitle" tabindex="-1">
             <header class="tz-help-head">
                 <h2 id="helpTitle">Syntax &amp; Shortcuts</h2>
                 <button type="button" id="helpClose" class="tz-help-close" title="Close (Esc)" aria-label="Close">&#xE711;</button>
             </header>
-            <div class="tz-help-body">
-                <section class="tz-help-sec">
-                    <h3>Markdown</h3>
-                    <table class="tz-help-table">
-                        <tbody>
-                            <tr><td colspan="2" class="tz-help-note">The <strong>Format</strong> menu lists every formatting command, and <strong>right-click</strong> on the text offers the same; or type the Markdown below.</td></tr>
-                            <tr><td><code># Heading</code> … <code>######</code></td><td>Headings 1–6 · <kbd>Ctrl+1</kbd>…<kbd>Ctrl+6</kbd></td></tr>
-                            <tr><td><code>**bold**</code> · <code>*italic*</code></td><td><kbd>Ctrl+B</kbd> · <kbd>Ctrl+I</kbd></td></tr>
-                            <tr><td><code>~~strike~~</code></td><td><kbd>Ctrl+Shift+X</kbd></td></tr>
-                            <tr><td><code>`inline`</code> · fenced <code>```lang</code></td><td>Code</td></tr>
-                            <tr><td><code>&gt; quote</code></td><td>Blockquote</td></tr>
-                            <tr><td><code>&gt; [!NOTE]</code> then <code>&gt; text</code></td><td>Callout: NOTE, TIP, IMPORTANT, WARNING, CAUTION</td></tr>
-                            <tr><td><code>-</code> · <code>1.</code> · <code>- [ ]</code></td><td>Bullet · numbered · task</td></tr>
-                            <tr><td><code>[text](url)</code></td><td><kbd>Ctrl+K</kbd></td></tr>
-                            <tr><td>Table</td><td><kbd>Ctrl+T</kbd></td></tr>
-                            <tr><td>List indent / outdent</td><td><kbd>Tab</kbd> · <kbd>Shift+Tab</kbd></td></tr>
-                        </tbody>
-                    </table>
-                </section>
-                <section class="tz-help-sec">
-                    <h3>Find &amp; search</h3>
-                    <table class="tz-help-table">
-                        <tbody>
-                            <tr><td>Find · Replace</td><td><kbd>Ctrl+F</kbd> · <kbd>Ctrl+H</kbd></td></tr>
-                            <tr><td>Search sidebar</td><td><kbd>Alt+S</kbd></td></tr>
-                            <tr><td>Next · previous match</td><td><kbd>F3</kbd> · <kbd>Shift+F3</kbd></td></tr>
-                            <tr><td colspan="2" class="tz-help-note">With results: <kbd>↑</kbd>/<kbd>↓</kbd> step hits; on Pages, <kbd>←</kbd>/<kbd>→</kbd> turn the page. In Reader or a book, <kbd>Space</kbd> and <kbd>Shift+Space</kbd> still turn the page. Without results, arrows keep their normal job (caret in Preview, page turn in Reader).</td></tr>
-                        </tbody>
-                    </table>
-                </section>
-                <section class="tz-help-sec">
-                    <h3>Pages &amp; position</h3>
-                    <table class="tz-help-table">
-                        <tbody>
-                            <tr><td>Turn page (any paginated view)</td><td><kbd>PageUp</kbd> · <kbd>PageDown</kbd> · wheel</td></tr>
-                            <tr><td>Turn page in Reader / book</td><td>Arrows · <kbd>Space</kbd> · <kbd>Shift+Space</kbd></td></tr>
-                            <tr><td>Go to page</td><td><kbd>Ctrl+G</kbd></td></tr>
-                            <tr><td>Bookmark · Marks pane</td><td><kbd>Ctrl+Shift+M</kbd> · <kbd>Ctrl+Shift+P</kbd></td></tr>
-                            <tr><td>Return from jump</td><td><kbd>Ctrl+Shift+J</kbd></td></tr>
-                        </tbody>
-                    </table>
-                </section>
-                <section class="tz-help-sec">
-                    <h3>Editing &amp; files</h3>
-                    <table class="tz-help-table">
-                        <tbody>
-                            <tr><td>New · Open</td><td><kbd>Ctrl+N</kbd> · <kbd>Ctrl+O</kbd></td></tr>
-                            <tr><td>Save · Save As</td><td><kbd>Ctrl+S</kbd> · <kbd>Ctrl+Shift+S</kbd></td></tr>
-                            <tr><td>Print / PDF</td><td><kbd>Ctrl+P</kbd></td></tr>
-                            <tr><td>Close tab · cycle tabs</td><td><kbd>Ctrl+W</kbd> · <kbd>Ctrl+Tab</kbd></td></tr>
-                            <tr><td>Undo · Redo</td><td><kbd>Ctrl+Z</kbd> · <kbd>Ctrl+Y</kbd></td></tr>
-                            <tr><td>Paste as plain text</td><td><kbd>Ctrl+Shift+V</kbd></td></tr>
-                            <tr><td>Right-click menu at the cursor</td><td><kbd>Menu</kbd> · <kbd>Shift+F10</kbd></td></tr>
-                        </tbody>
-                    </table>
-                </section>
-                <section class="tz-help-sec">
-                    <h3>View</h3>
-                    <table class="tz-help-table">
-                        <tbody>
-                            <tr><td>Source / Preview / Reader</td><td>Mode control on the toolbar</td></tr>
-                            <tr><td>Sidebar (Outline/Search)</td><td><kbd>Alt+\</kbd></td></tr>
-                            <tr><td>Reveal Markdown · Focus · Typewriter</td><td><kbd>F7</kbd> · <kbd>F8</kbd> · <kbd>F9</kbd></td></tr>
-                            <tr><td>Zoom in · out · reset</td><td><kbd>Ctrl++</kbd> · <kbd>Ctrl+-</kbd> · <kbd>Ctrl+0</kbd> · Ctrl+scroll</td></tr>
-                            <tr><td>Menus (File · Edit · Format · View · Themes · Help)</td><td><kbd>Alt+F</kbd> · <kbd>E</kbd> · <kbd>O</kbd> · <kbd>V</kbd> · <kbd>T</kbd> · <kbd>H</kbd></td></tr>
-                            <tr><td>A menu item</td><td>Its underlined letter: <kbd>Alt+E</kbd>, <kbd>P</kbd> pastes</td></tr>
-                            <tr><td colspan="2" class="tz-help-note">Hold <kbd>Alt</kbd> to see the letters. Each letter is used once in a menu, so one key runs the item; the right-click menu has letters too.</td></tr>
-                            <tr><td>Fullscreen</td><td><kbd>F11</kbd></td></tr>
-                            <tr><td>This help · Debug HUD</td><td><kbd>F1</kbd> · <kbd>Ctrl+Shift+D</kbd></td></tr>
-                        </tbody>
-                    </table>
-                </section>
-                <section class="tz-help-sec">
-                    <h3>Open for reading</h3>
-                    <table class="tz-help-table">
-                        <tbody>
-                            <tr><td>Books</td><td><code>.epub</code> — Reader, scrubber, TOC</td></tr>
-                            <tr><td>PDF</td><td>Pages / 2-Col, scrubber, TOC, OCR, annotate &amp; save</td></tr>
-                            <tr><td>HTML</td><td><strong>Source</strong> edit · <strong>Reader</strong> page · Preview off</td></tr>
-                            <tr><td>CSS · XML · XAML</td><td>Editor Source (editable text)</td></tr>
-                            <tr><td>Images</td><td>Fit-to-pane; right‑click → Magnify</td></tr>
-                            <tr><td>Video · audio</td><td>Browser controls; codecs = Edge/OS</td></tr>
-                            <tr><td colspan="2" class="tz-help-note">Books, HTML, images and media never dirty and never save over the file. Annotated PDFs save to a copy unless you choose otherwise.</td></tr>
-                        </tbody>
-                    </table>
-                </section>
+            <div class="tz-syn-bar">
+                <input type="search" id="helpFilter" class="tz-syn-search" placeholder="Filter shortcuts or syntax…" autocomplete="off" spellcheck="false" aria-label="Filter shortcuts or syntax" />
+                <div class="tz-syn-tabs" role="tablist" aria-label="Categories">
+                    <button type="button" class="tz-syn-tab active" data-cat="all" role="tab" aria-selected="true">All</button>
+                    <button type="button" class="tz-syn-tab" data-cat="markdown" role="tab" aria-selected="false">Markdown</button>
+                    <button type="button" class="tz-syn-tab" data-cat="editing" role="tab" aria-selected="false">Editing</button>
+                    <button type="button" class="tz-syn-tab" data-cat="navigation" role="tab" aria-selected="false">Navigation</button>
+                    <button type="button" class="tz-syn-tab" data-cat="view" role="tab" aria-selected="false">View</button>
+                    <button type="button" class="tz-syn-tab" data-cat="files" role="tab" aria-selected="false">Files</button>
+                </div>
+            </div>
+            <div class="tz-help-body tz-syn-body">
+                <div class="tz-syn-grid">
+                    <section class="tz-help-sec tz-syn-card tz-syn-card-wide" data-cat="markdown">
+                        <div class="tz-syn-card-head">
+                            <h3>Markdown Syntax</h3>
+                            <span class="tz-syn-sub">Click any snippet to copy · Right-click or Format menu applies the same styles</span>
+                        </div>
+                        <table class="tz-help-table tz-syn-md-table">
+                            <tbody>
+                                <tr>
+                                    <td><button type="button" class="tz-syn-copy" data-copy="## " title="Copy syntax"><code># Heading</code> … <code>######</code></button></td>
+                                    <td class="tz-syn-prev"><span class="tz-syn-h">Heading 1–6</span></td>
+                                    <td><kbd>Ctrl+1</kbd>…<kbd>6</kbd></td>
+                                </tr>
+                                <tr>
+                                    <td><button type="button" class="tz-syn-copy" data-copy="**bold**" title="Copy syntax"><code>**bold**</code></button></td>
+                                    <td class="tz-syn-prev"><strong>Bold text</strong></td>
+                                    <td><kbd>Ctrl+B</kbd></td>
+                                </tr>
+                                <tr>
+                                    <td><button type="button" class="tz-syn-copy" data-copy="*italic*" title="Copy syntax"><code>*italic*</code></button></td>
+                                    <td class="tz-syn-prev"><em>Italic text</em></td>
+                                    <td><kbd>Ctrl+I</kbd></td>
+                                </tr>
+                                <tr>
+                                    <td><button type="button" class="tz-syn-copy" data-copy="~~strike~~" title="Copy syntax"><code>~~strike~~</code></button></td>
+                                    <td class="tz-syn-prev"><del>Strikethrough</del></td>
+                                    <td><kbd>Ctrl+Shift+X</kbd></td>
+                                </tr>
+                                <tr>
+                                    <td><button type="button" class="tz-syn-copy" data-copy="`code`" title="Copy syntax"><code>`code`</code></button></td>
+                                    <td class="tz-syn-prev"><span class="tz-syn-code">inline code</span></td>
+                                    <td>Format → Inline Code</td>
+                                </tr>
+                                <tr>
+                                    <td><button type="button" class="tz-syn-copy" data-copy="```js&#10;&#10;```" title="Copy syntax"><code>```js</code></button></td>
+                                    <td class="tz-syn-prev"><span class="tz-syn-code">fenced code block</span></td>
+                                    <td>Type <code>```</code> + Enter</td>
+                                </tr>
+                                <tr>
+                                    <td><button type="button" class="tz-syn-copy" data-copy="> " title="Copy syntax"><code>&gt; quote</code></button></td>
+                                    <td class="tz-syn-prev"><span class="tz-syn-quote">Quoted block</span></td>
+                                    <td>Format → Quote</td>
+                                </tr>
+                                <tr>
+                                    <td><button type="button" class="tz-syn-copy" data-copy="> [!NOTE]&#10;> " title="Copy syntax"><code>&gt; [!NOTE]</code></button></td>
+                                    <td class="tz-syn-prev"><span class="tz-syn-callout">NOTE</span> <span class="tz-syn-muted">TIP · IMPORTANT · WARNING · CAUTION</span></td>
+                                    <td>Format → Callout</td>
+                                </tr>
+                                <tr>
+                                    <td><button type="button" class="tz-syn-copy" data-copy="- " title="Copy syntax"><code>- item</code></button> · <button type="button" class="tz-syn-copy" data-copy="1. " title="Copy syntax"><code>1.</code></button> · <button type="button" class="tz-syn-copy" data-copy="- [ ] " title="Copy syntax"><code>- [ ]</code></button></td>
+                                    <td class="tz-syn-prev">Bullet · numbered · task list</td>
+                                    <td><kbd>Tab</kbd> · <kbd>Shift+Tab</kbd> indent</td>
+                                </tr>
+                                <tr>
+                                    <td><button type="button" class="tz-syn-copy" data-copy="[text](https://)" title="Copy syntax"><code>[text](url)</code></button></td>
+                                    <td class="tz-syn-prev"><span class="tz-syn-link">Hyperlink</span></td>
+                                    <td><kbd>Ctrl+K</kbd></td>
+                                </tr>
+                                <tr>
+                                    <td><button type="button" class="tz-syn-copy" data-copy="![alt](image.png)" title="Copy syntax"><code>![alt](image.png)</code></button></td>
+                                    <td class="tz-syn-prev">Embedded image</td>
+                                    <td>Paste image / drag-drop</td>
+                                </tr>
+                                <tr>
+                                    <td><button type="button" class="tz-syn-copy" data-copy="| Header 1 | Header 2 |&#10;| --- | --- |&#10;| Cell 1 | Cell 2 |" title="Copy syntax"><code>| A | B |</code></button></td>
+                                    <td class="tz-syn-prev"><span class="tz-syn-code">Table</span></td>
+                                    <td><kbd>Ctrl+T</kbd></td>
+                                </tr>
+                                <tr>
+                                    <td><button type="button" class="tz-syn-copy" data-copy="---" title="Copy syntax"><code>---</code></button></td>
+                                    <td class="tz-syn-prev"><span class="tz-syn-hr"></span></td>
+                                    <td>Horizontal rule</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </section>
+                    <section class="tz-help-sec tz-syn-card" data-cat="editing">
+                        <h3>Editing &amp; Files</h3>
+                        <table class="tz-help-table">
+                            <tbody>
+                                <tr><td>New · Open</td><td><kbd>Ctrl+N</kbd> · <kbd>Ctrl+O</kbd></td></tr>
+                                <tr><td>Save · Save As</td><td><kbd>Ctrl+S</kbd> · <kbd>Ctrl+Shift+S</kbd></td></tr>
+                                <tr><td>Print / Export PDF</td><td><kbd>Ctrl+P</kbd></td></tr>
+                                <tr><td>Close tab · Cycle tabs</td><td><kbd>Ctrl+W</kbd> · <kbd>Ctrl+Tab</kbd></td></tr>
+                                <tr><td>Undo · Redo</td><td><kbd>Ctrl+Z</kbd> · <kbd>Ctrl+Y</kbd></td></tr>
+                                <tr><td>Cut · Copy · Paste</td><td><kbd>Ctrl+X</kbd> · <kbd>Ctrl+C</kbd> · <kbd>Ctrl+V</kbd></td></tr>
+                                <tr><td>Paste as plain text</td><td><kbd>Ctrl+Shift+V</kbd></td></tr>
+                                <tr><td>Select all</td><td><kbd>Ctrl+A</kbd></td></tr>
+                                <tr><td>Right-click menu at cursor</td><td><kbd>Menu</kbd> · <kbd>Shift+F10</kbd></td></tr>
+                            </tbody>
+                        </table>
+                    </section>
+                    <section class="tz-help-sec tz-syn-card" data-cat="navigation">
+                        <h3>Find, Search &amp; Bookmarks</h3>
+                        <table class="tz-help-table">
+                            <tbody>
+                                <tr><td>Find · Replace</td><td><kbd>Ctrl+F</kbd> · <kbd>Ctrl+H</kbd></td></tr>
+                                <tr><td>Search sidebar</td><td><kbd>Alt+S</kbd></td></tr>
+                                <tr><td>Next · previous match</td><td><kbd>F3</kbd> · <kbd>Shift+F3</kbd></td></tr>
+                                <tr><td>Step hits / Pages turn</td><td><kbd>↑</kbd>/<kbd>↓</kbd> · <kbd>←</kbd>/<kbd>→</kbd></td></tr>
+                                <tr><td>Bookmark this page</td><td><kbd>Ctrl+Shift+M</kbd></td></tr>
+                                <tr><td>Show Bookmarks pane</td><td><kbd>Ctrl+Shift+P</kbd></td></tr>
+                                <tr><td>Return from jump</td><td><kbd>Ctrl+Shift+J</kbd></td></tr>
+                            </tbody>
+                        </table>
+                    </section>
+                    <section class="tz-help-sec tz-syn-card" data-cat="view">
+                        <h3>View &amp; Writing Modes</h3>
+                        <table class="tz-help-table">
+                            <tbody>
+                                <tr><td>Sidebar (Outline / Search)</td><td><kbd>Alt+\</kbd></td></tr>
+                                <tr><td>Reveal Markdown on Focus</td><td><kbd>F7</kbd></td></tr>
+                                <tr><td>Focus Mode · Typewriter</td><td><kbd>F8</kbd> · <kbd>F9</kbd></td></tr>
+                                <tr><td>Zoom in · out · reset</td><td><kbd>Ctrl++</kbd> · <kbd>Ctrl+-</kbd> · <kbd>Ctrl+0</kbd></td></tr>
+                                <tr><td>Fullscreen</td><td><kbd>F11</kbd></td></tr>
+                                <tr><td>Syntax &amp; Shortcuts</td><td><kbd>F1</kbd></td></tr>
+                                <tr><td>Debug HUD</td><td><kbd>Ctrl+Shift+D</kbd></td></tr>
+                            </tbody>
+                        </table>
+                    </section>
+                    <section class="tz-help-sec tz-syn-card" data-cat="navigation view">
+                        <h3>Pages &amp; Menu Access Keys</h3>
+                        <table class="tz-help-table">
+                            <tbody>
+                                <tr><td>Turn page (paginated views)</td><td><kbd>PageUp</kbd> · <kbd>PageDown</kbd> · Wheel</td></tr>
+                                <tr><td>Reader / book page turn</td><td><kbd>←</kbd> <kbd>→</kbd> · <kbd>Space</kbd> · <kbd>Shift+Space</kbd></td></tr>
+                                <tr><td>Go to page</td><td><kbd>Ctrl+G</kbd></td></tr>
+                                <tr><td>Top menus (hold <kbd>Alt</kbd>)</td><td><kbd>Alt+F</kbd> <kbd>E</kbd> <kbd>O</kbd> <kbd>V</kbd> <kbd>T</kbd> <kbd>H</kbd></td></tr>
+                                <tr><td>Run item by letter (unique)</td><td>e.g. <kbd>Alt+E</kbd>, <kbd>P</kbd> pastes</td></tr>
+                            </tbody>
+                        </table>
+                    </section>
+                    <section class="tz-help-sec tz-syn-card tz-syn-card-wide" data-cat="files">
+                        <h3>Supported File Types</h3>
+                        <table class="tz-help-table tz-syn-md-table">
+                            <tbody>
+                                <tr><td><code>.md</code> · <code>.txt</code></td><td class="tz-syn-prev">Markdown &amp; plain text</td><td>Preview · Source · Reader</td></tr>
+                                <tr><td><code>.epub</code></td><td class="tz-syn-prev">E-books (read-only)</td><td>Reader · TOC · Scrubber</td></tr>
+                                <tr><td><code>.pdf</code></td><td class="tz-syn-prev">PDF documents</td><td>Pages / 2-Col · OCR · Annotate</td></tr>
+                                <tr><td><code>.html</code></td><td class="tz-syn-prev">Web pages</td><td>Source edit · Reader view</td></tr>
+                                <tr><td><code>.cs</code> · <code>.js</code> · <code>.json</code> · <code>.css</code> · <code>.xml</code></td><td class="tz-syn-prev">Code &amp; config files</td><td>Source editor</td></tr>
+                                <tr><td>Images · Audio · Video</td><td class="tz-syn-prev">Media (read-only)</td><td>Fit-to-pane · Magnify · OS playback</td></tr>
+                            </tbody>
+                        </table>
+                    </section>
+                </div>
+                <p id="helpEmpty" class="tz-syn-empty" hidden>No matching shortcuts or syntax.</p>
             </div>
             <footer class="tz-help-foot">
-                <span class="tz-help-hint">Esc to close</span>
-                <button type="button" id="helpOk" class="tz-help-ok">Close</button>
+                <button type="button" id="helpGuide" class="tz-foot-btn" title="Opens the full guide (README) in a tab">Full User Guide</button>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <span class="tz-help-hint">Esc to close</span>
+                    <button type="button" id="helpOk" class="tz-help-ok">Close</button>
+                </div>
             </footer>
         </div>
     </div>
