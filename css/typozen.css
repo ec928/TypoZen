@@ -2618,6 +2618,13 @@
         #editor-wrapper.scratch-empty .block.focused {
             background-color: transparent;
         }
+        /* Reveal draws the active line as its Markdown: text and <br> only (a Preview line
+           always has elements). Its spaces are part of the Markdown -- "  - item" is a nested
+           item -- and collapsed whitespace dropped them when the line was read back, so typing
+           or pasting in a nested item with Reveal on flattened it (2026-11-21). */
+        #editor .block.focused:not(:has(:not(br))) {
+            white-space: pre-wrap;
+        }
         #editor.reader-mode .block.focused,
         #editor.book-mode .block.focused {
             background-color: transparent;

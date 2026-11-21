@@ -2274,11 +2274,20 @@
             try { return !block.querySelector(':not(br)'); } catch (e) { return true; }
         }
 
+        /**
+         * The Markdown a revealed line holds. Its spaces are kept as written (white-space:
+         * pre-wrap, typozen.css), so a no-break space a paste put in to stop the browser
+         * dropping an edge space is read as one -- it is a space (as toggle_reveal reads it).
+         */
+        function revealedMarkdownOf(block) {
+            return String((block && block.innerText) || '').replace(/\u00a0/g, ' ');
+        }
+
         function serializeBlockDomToRaw(block) {
             if (!block) return '';
             try {
                 if (state.revealOnFocus && blockShowsRevealedMarkdown(block)) {
-                    const t = coerceBlockRaw(block.innerText || '');
+                    const t = coerceBlockRaw(revealedMarkdownOf(block));
                     return (typeof isScratchHintText === 'function' && isScratchHintText(t)) ? '' : t;
                 }
                 // Always tree-walk (blockHtmlToMarkdown). Joining child innerText used to
@@ -2329,7 +2338,7 @@
             if (!block) return '';
             const focusedHere = isBlockFocused(block);
             if (state.revealOnFocus && focusedHere && blockShowsRevealedMarkdown(block)) {
-                return normalizeBlockRaw(block.innerText || block.getAttribute('data-raw') || '');
+                return normalizeBlockRaw(revealedMarkdownOf(block) || block.getAttribute('data-raw') || '');
             }
             const raw = block.getAttribute('data-raw');
             // Images never appear in innerText. Fewer <img>s than data-raw ⇒ deleted image.

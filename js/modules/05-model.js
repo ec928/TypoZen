@@ -2112,7 +2112,7 @@
             nodes.forEach(n => p.appendChild(n));
             tmp.appendChild(p);
             let md = '';
-            try { md = wasRevealed ? (p.textContent || '') : blockHtmlToMarkdown(tmp); }
+            try { md = wasRevealed ? (p.textContent || '').replace(/\u00a0/g, ' ') : blockHtmlToMarkdown(tmp); }
             catch (e) { md = p.textContent || ''; }
             // The converter trims; the space before the moved words is part of them.
             if (lead && !/^\s/.test(md)) md = lead[0].replace(/ /g, ' ') + md;
@@ -2282,7 +2282,7 @@
                     if (active && !editor.contains(active)) active = null;
                     if (active && active.classList && active.classList.contains('block')) {
                         try {
-                            const updated = isRevealedBlock(active) ? active.innerText : blockHtmlToMarkdown(active);
+                            const updated = isRevealedBlock(active) ? revealedMarkdownOf(active) : blockHtmlToMarkdown(active);
                             active.setAttribute('data-raw', updated);
                             const mid = DocumentModel.modelIndexOfEl(active);
                             if (mid >= 0) DocumentModel.setBlockRaw(mid, updated);
@@ -2446,6 +2446,29 @@
                     }
                 } catch (eOff) {}
 
+                // One line pasted onto an empty line is that line, as written -- as each line
+                // of a longer paste already is. Going through the paths below, a task item or a
+                // "* " bullet came out as its bare words (rendered, then unwrapped) and an
+                // indented item as "  -   - item" (typed in, then list-formatted), so copying a
+                // to-do onto a new line lost its box (2026-11-21).
+                try {
+                    if (active && active.classList && active.classList.contains('block')
+                        && !String(active.getAttribute('data-raw') || '').trim()
+                        && !String(active.textContent || '').replace(/\u00a0/g, ' ').trim()
+                        && !active.querySelector('img, table, pre, hr')
+                        && String(blockTexts[0]).trim()) {
+                        // writeBlockRaw: the line's attributes (list indent), the model, bookmark
+                        // caches -- the same write a format makes.
+                        writeBlockRaw(active, String(blockTexts[0]));
+                        if (typeof focusEditorNoScroll === 'function') focusEditorNoScroll();
+                        if (typeof setCaretAtOffset === 'function') setCaretAtOffset(active, (active.textContent || '').length);
+                        updateStats();
+                        updateOutline();
+                        HistoryManager.commitEdit();
+                        return;
+                    }
+                } catch (eEmpty) {}
+
                 // A line has one marker. Text copied from the start of a list item, heading
                 // or quote carries that line's marker; pasted in front of the words of a line
                 // that has a marker of its own, the pasted one is dropped. Cutting the first
@@ -2504,7 +2527,7 @@
                 const wasRevealed = isRevealedBlock(active);
                 document.execCommand('insertText', false, withKeptEdgeSpaces(blockTexts[0]));
                 if (active && active.classList && active.classList.contains('block')) {
-                    const raw0 = wasRevealed ? active.innerText : blockHtmlToMarkdown(active);
+                    const raw0 = wasRevealed ? revealedMarkdownOf(active) : blockHtmlToMarkdown(active);
                     active.setAttribute('data-raw', raw0);
                     try {
                         const idx0 = DocumentModel.modelIndexOfEl(active);
@@ -2561,7 +2584,7 @@
                 // end of the document and the caret sat in the middle of the paste.
                 let headMd = '';
                 try {
-                    headMd = isRevealedBlock(active) ? (active.innerText || '') : blockHtmlToMarkdown(active);
+                    headMd = isRevealedBlock(active) ? revealedMarkdownOf(active) : blockHtmlToMarkdown(active);
                 } catch (eH) {
                     try { headMd = active.innerText || ''; } catch (eI) { headMd = ''; }
                 }
@@ -4907,7 +4930,7 @@
                     }
                 } catch (eT) {}
                 try {
-                    const tRaw = isRevealedBlock(block) ? (block.innerText || '') : blockHtmlToMarkdown(block);
+                    const tRaw = isRevealedBlock(block) ? revealedMarkdownOf(block) : blockHtmlToMarkdown(block);
                     if (tRaw != null) {
                         block.setAttribute('data-raw', tRaw);
                         if (typeof DocumentModel !== 'undefined') {
@@ -5025,7 +5048,7 @@
                 // The line it pushes down is the next number.
                 if (wl && wl.kind === 'ol') wholeLine = wholeLine.replace(/^([ \t]*)\d+/, '$1' + (wl.num + 1));
             } else if (raw == null || raw === '') {
-                raw = isRevealedBlock(block) ? (block.innerText || '') : blockHtmlToMarkdown(block);
+                raw = isRevealedBlock(block) ? revealedMarkdownOf(block) : blockHtmlToMarkdown(block);
             } else if (isRevealedBlock(block)) {
                 // Prefer remaining text after deleteContents
                 const left = String(block.innerText || '').replace(/\u00a0/g, ' ');
