@@ -25,7 +25,7 @@ Two fast entry points:
 
 - **`.\tests\run-tests.ps1`** (or `.\Build_TypoZen.ps1`):
   Runs all headless suites, including the randomized property/attack sweeps:
-  - **`selection-attack.mjs`**: Randomized `Shift+click` / drag selections from any block type to any block type across **all three layouts** (`scroll1`, `scroll2`, `pages`), pressing real keys (`Delete`, `Backspace`, `Enter`, `Shift+Enter`, typing, `Ctrl+X/C/V`, `Ctrl+B`, `Ctrl+I`), and applying the bullet, numbered, quote and heading formats as the toolbar does, and asserting:
+  - **`selection-attack.mjs`**: Randomized `Shift+click` / drag selections from any block type to any block type across **all three layouts** (`scroll1`, `scroll2`, `pages`), pressing real keys (`Delete`, `Backspace`, `Enter`, `Shift+Enter`, typing, `Ctrl+X/C/V`, `Ctrl+B`, `Ctrl+I`), and applying the bullet, numbered, quote and heading formats as the right-click menu does (`fmt:` messages), and asserting:
     1. No lost or duplicated tokens
     2. Lines outside the selection stay byte-identical (the lines of a table the selection touches are excused; a numbered list below an Enter may count on)
     3. `Ctrl+Z` restores the exact document in the expected step count
