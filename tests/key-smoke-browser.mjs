@@ -26,7 +26,8 @@ const CASES = [
     ['Enter keeps an image', 'A\n\nalpha ![p](a.png) omega', 'alpha', true, ['Enter'], 'A\n\nalpha\n ![p](a.png) omega'],
     ['Enter at line start keeps a heading', 'A\n\n# Head', 'Head', false, ['Enter'], 'A\n\n\n# Head'],
     ['Enter at line start keeps a quote', 'A\n\n> Quote', 'Quote', false, ['Enter'], 'A\n\n\n> Quote'],
-    ['Enter in a quote keeps the next line', 'A\n\n> one\n> two', 'one', true, ['Enter', 'Y'], 'A\n\n> one\nY\n> two'],
+    // Since 0.21.0 the new line stays in the quote, as in a list (Ed, 2026-11-21).
+    ['Enter in a quote keeps the next line', 'A\n\n> one\n> two', 'one', true, ['Enter', 'Y'], 'A\n\n> one\n> Y\n> two'],
     ['Enter in code is a line of code', CODE, 'line1', true, ['Enter', 'Y'], 'A\n\n```js\nline1\nY\nline2\n```\n\nZ'],
     ['Enter in a table does nothing', TABLE, 'c1', true, ['Enter'], TABLE],
     ['Enter renumbers the list', OL, 'one', true, ['Enter', 'Y'], 'A\n\n1. one\n2. Y\n3. two\n4. three'],
