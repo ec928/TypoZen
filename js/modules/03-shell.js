@@ -2517,11 +2517,10 @@
                 // Edit > Select All. Route to any active or recently-focused UI input (Find bar /
                 // Search sidebar) first, then Source or Preview.
                 let uiInput = document.activeElement;
-                if (!(uiInput && (uiInput.tagName === 'INPUT' || uiInput.tagName === 'TEXTAREA')
-                    && uiInput !== sourceEditor && (!editor || !editor.contains(uiInput)))) {
+                if (!(typeof window.tzIsTextUiInput === 'function' && window.tzIsTextUiInput(uiInput))) {
                     const last = window.__tzLastUiInput;
                     if (last && last.isConnected && !last.closest('[hidden]') && last.getClientRects().length > 0
-                        && last !== sourceEditor && (!editor || !editor.contains(last))) {
+                        && typeof window.tzIsTextUiInput === 'function' && window.tzIsTextUiInput(last)) {
                         uiInput = last;
                     } else {
                         uiInput = null;

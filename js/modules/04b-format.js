@@ -2448,6 +2448,14 @@
         function markCaretDisplaced() {}
         function clearCaretDisplaced() {}
 
+        function isTextUiInput(el) {
+            if (!el || el === sourceEditor || (editor && editor.contains(el))) return false;
+            if (el.tagName === 'TEXTAREA') return true;
+            if (el.tagName !== 'INPUT') return false;
+            const tp = String(el.type || 'text').toLowerCase();
+            return tp === 'text' || tp === 'search' || tp === 'url' || tp === 'email' || tp === 'tel' || tp === 'password';
+        }
+        if (typeof window !== 'undefined') window.tzIsTextUiInput = isTextUiInput;
         if (typeof window !== 'undefined' && window.__tzLastUiInput == null) window.__tzLastUiInput = null;
         if (typeof document !== 'undefined' && !window.__tzUiInputTrackers) {
             window.__tzUiInputTrackers = true;
@@ -2455,11 +2463,12 @@
                 try {
                     const t = e && e.target;
                     if (!t) return;
-                    if ((t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')
-                        && t !== sourceEditor && (!editor || !editor.contains(t))) {
+                    if (isTextUiInput(t)) {
                         window.__tzLastUiInput = t;
-                    } else if (e.type === 'mousedown' || e.type === 'pointerdown'
-                        || (editor && (t === editor || editor.contains(t))) || t === sourceEditor) {
+                    } else if (e.type === 'mousedown' || e.type === 'pointerdown' || e.type === 'focusin'
+                        || (editor && (t === editor || editor.contains(t)))
+                        || t === sourceEditor
+                        || (typeof isSourceNode === 'function' && isSourceNode(t))) {
                         window.__tzLastUiInput = null;
                     }
                 } catch (eU) {}
@@ -2481,6 +2490,7 @@
                         start: sourceEditor.selectionStart | 0,
                         end: sourceEditor.selectionEnd | 0
                     };
+                    if (typeof window !== 'undefined') window.__tzLastUiInput = null;
                     return;
                 }
                 const sel = window.getSelection();

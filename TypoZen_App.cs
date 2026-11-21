@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.21.20";
+        internal const string AppVersion = "0.21.21";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -13792,23 +13792,28 @@ namespace TypoZen
         private static void SetClipboardPayload(string text, string html)
         {
             if (string.IsNullOrEmpty(text)) return;
-            try
+            for (int attempt = 0; attempt < 8; attempt++)
             {
-                if (!string.IsNullOrEmpty(html))
+                try
                 {
-                    var data = new DataObject();
-                    data.SetText(text, TextDataFormat.UnicodeText);
-                    data.SetData(DataFormats.Text, text);
-                    data.SetText(BuildCfHtml(html), TextDataFormat.Html);
-                    Clipboard.SetDataObject(data, true);
+                    if (!string.IsNullOrEmpty(html))
+                    {
+                        var data = new DataObject();
+                        data.SetText(text, TextDataFormat.UnicodeText);
+                        data.SetData(DataFormats.Text, text);
+                        data.SetText(BuildCfHtml(html), TextDataFormat.Html);
+                        Clipboard.SetDataObject(data, true);
+                        return;
+                    }
+                    Clipboard.SetText(text, TextDataFormat.UnicodeText);
                     return;
                 }
-                Clipboard.SetText(text, TextDataFormat.UnicodeText);
+                catch
+                {
+                    if (attempt < 7) System.Threading.Thread.Sleep(25);
+                }
             }
-            catch
-            {
-                try { WinForms.Clipboard.SetText(text); } catch { }
-            }
+            try { WinForms.Clipboard.SetText(text); } catch { }
         }
 
         /// <summary>Save a pasted picture beside the document (or pending, if untitled) and insert it.</summary>

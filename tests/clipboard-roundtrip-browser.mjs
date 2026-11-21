@@ -460,6 +460,105 @@ async function main() {
             'export HTML contains every model block (' + exp.exportedBlocks +
             ' of ' + exp.modelBlocks + ')');
 
+        console.log('\n=== Reveal (F7) paste keeps Markdown ===');
+        const revealPaste = await page.evaluate(() => {
+            state.revealOnFocus = true;
+            try {
+                loadMarkdownContent('## Heading two here');
+                const b = document.querySelector('#editor .block');
+                const tw = document.createTreeWalker(b, NodeFilter.SHOW_TEXT);
+                let n;
+                while ((n = tw.nextNode())) {
+                    const idx = n.data.indexOf(' here');
+                    if (idx >= 0) {
+                        const r = document.createRange();
+                        r.setStart(n, idx);
+                        r.collapse(true);
+                        const s = getSelection();
+                        s.removeAllRanges();
+                        s.addRange(r);
+                        break;
+                    }
+                }
+                pasteLikeCtrlV('', 'X', false);
+                const afterFirst = getMarkdownContent(false);
+                pasteLikeCtrlV('', 'Y', false);
+                const afterSecond = getMarkdownContent(false);
+
+                loadMarkdownContent('See [a link](https://x.test) now');
+                const lb = document.querySelector('#editor .block');
+                const tw2 = document.createTreeWalker(lb, NodeFilter.SHOW_TEXT);
+                let ln;
+                while ((ln = tw2.nextNode())) {
+                    const li = ln.data.indexOf('a link');
+                    if (li >= 0) {
+                        const r2 = document.createRange();
+                        r2.setStart(ln, li);
+                        r2.setEnd(ln, li + 1);
+                        const s2 = getSelection();
+                        s2.removeAllRanges();
+                        s2.addRange(r2);
+                        break;
+                    }
+                }
+                pasteLikeCtrlV('', 'THE', false);
+                const afterLink = getMarkdownContent(false);
+                return { afterFirst, afterSecond, afterLink };
+            } finally {
+                state.revealOnFocus = false;
+            }
+        });
+        assert(revealPaste.afterFirst === '## Heading twoX here',
+            'Reveal paste once keeps ## heading (' + JSON.stringify(revealPaste.afterFirst) + ')');
+        assert(revealPaste.afterSecond === '## Heading twoXY here',
+            'Reveal paste twice keeps ## heading (' + JSON.stringify(revealPaste.afterSecond) + ')');
+        assert(revealPaste.afterLink === 'See [THE link](https://x.test) now',
+            'Reveal paste inside link keeps link markdown (' + JSON.stringify(revealPaste.afterLink) + ')');
+
+        console.log('\n=== Find-bar checkbox focus does not throw on Edit > Paste / Select All ===');
+        const findChk = await page.evaluate(() => {
+            openFindBar();
+            const inp = document.getElementById('findInput');
+            const chk = document.querySelector('#findBar input[type="checkbox"]');
+            inp.value = 'abc';
+            let threw = false;
+            try {
+                chk.focus();
+                pasteLikeCtrlV('', 'XYZ', false);
+                handleCommand('cmd:select_all');
+            } catch (e) {
+                threw = e && e.message ? e.message : String(e);
+            }
+            const val = inp.value;
+            if (typeof closeFindBar === 'function') closeFindBar();
+            return { threw, val };
+        });
+        assert(!findChk.threw && findChk.val === 'abc',
+            'Find checkbox focus neither throws nor edits #findInput (' + JSON.stringify(findChk) + ')');
+
+        console.log('\n=== Source focus clears Find box memory without a click ===');
+        const srcClr = await page.evaluate(() => {
+            setSourceDocExt('md');
+            loadMarkdownContent('one two');
+            handleCommand('view_set:mode:source');
+            openFindBar();
+            const inp = document.getElementById('findInput');
+            inp.focus();
+            inp.value = 'one';
+            inp.setSelectionRange(0, 1);
+            sourceEditor.focus();
+            sourceEditor.setSelectionRange(7, 7);
+            if (typeof rememberEditorCaret === 'function') rememberEditorCaret();
+            pasteLikeCtrlV('', ' MENU', false);
+            const docVal = sourceEditor.value;
+            const findVal = inp.value;
+            if (typeof closeFindBar === 'function') closeFindBar();
+            handleCommand('view_set:mode:wysiwyg');
+            return { docVal, findVal };
+        });
+        assert(srcClr.docVal === 'one two MENU' && srcClr.findVal === 'one',
+            'Source focus routes paste to Source rather than stale Find input (' + JSON.stringify(srcClr) + ')');
+
         console.log('\npassed=' + passed + ' failed=' + failed);
         if (failed) { console.error('\nCLIPBOARD ROUND TRIP FAILED'); process.exitCode = 1; return; }
         console.log('\nCLIPBOARD ROUND TRIP PASSED');

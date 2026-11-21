@@ -2062,12 +2062,17 @@
                 .replace(/^ | $/g, ' ');
         }
 
+        function isRevealedBlock(el) {
+            return !!(state.revealOnFocus && el && typeof blockShowsRevealedMarkdown === 'function' && blockShowsRevealedMarkdown(el));
+        }
+
         /**
          * Remove what follows a collapsed caret in `block` and return it as Markdown, or ''.
          * The block's own wrapper (a paragraph, a heading) stays behind: only its inline
          * content moves, marks and all.
          */
         function cutTextAfterCaret(block) {
+            const wasRevealed = isRevealedBlock(block);
             const sel = window.getSelection();
             if (!sel || !sel.rangeCount || !sel.isCollapsed || !block.contains(sel.anchorNode)) return '';
             const r = document.createRange();
@@ -2107,7 +2112,7 @@
             nodes.forEach(n => p.appendChild(n));
             tmp.appendChild(p);
             let md = '';
-            try { md = state.revealOnFocus ? (p.textContent || '') : blockHtmlToMarkdown(tmp); }
+            try { md = wasRevealed ? (p.textContent || '') : blockHtmlToMarkdown(tmp); }
             catch (e) { md = p.textContent || ''; }
             // The converter trims; the space before the moved words is part of them.
             if (lead && !/^\s/.test(md)) md = lead[0].replace(/ /g, ' ') + md;
@@ -2277,7 +2282,7 @@
                     if (active && !editor.contains(active)) active = null;
                     if (active && active.classList && active.classList.contains('block')) {
                         try {
-                            const updated = state.revealOnFocus ? active.innerText : blockHtmlToMarkdown(active);
+                            const updated = isRevealedBlock(active) ? active.innerText : blockHtmlToMarkdown(active);
                             active.setAttribute('data-raw', updated);
                             const mid = DocumentModel.modelIndexOfEl(active);
                             if (mid >= 0) DocumentModel.setBlockRaw(mid, updated);
@@ -2421,7 +2426,7 @@
 
             // Several lines pasted inside a fenced code block are code. Splitting them into
             // blocks closed the fence at the caret and left "``` line ```" behind.
-            if (String(text).indexOf('\n') >= 0 && !state.revealOnFocus
+            if (String(text).indexOf('\n') >= 0 && !isRevealedBlock(active)
                 && pasteIntoCodeFence(active, String(text).replace(/\r\n?/g, '\n'))) {
                 updateStats();
                 HistoryManager.commitEdit();
@@ -2463,7 +2468,7 @@
                     const curRaw = active && active.classList && active.classList.contains('block')
                         ? (active.getAttribute('data-raw') || '') : null;
                     const canMapLine = sel && sel.rangeCount && (sel.isCollapsed || singleBlockReplace);
-                    if (curRaw != null && canMapLine && !state.revealOnFocus && /[*_`~\[]/.test(blockTexts[0])
+                    if (curRaw != null && canMapLine && !isRevealedBlock(active) && /[*_`~\[]/.test(blockTexts[0])
                         && typeof insertMarkdownIntoLine === 'function') {
                         const next = insertMarkdownIntoLine(curRaw, startOff, blockTexts[0], endOff);
                         if (next) {
@@ -2496,27 +2501,42 @@
                     }
                 } catch (eB) {}
 
+                const wasRevealed = isRevealedBlock(active);
                 document.execCommand('insertText', false, withKeptEdgeSpaces(blockTexts[0]));
                 if (active && active.classList && active.classList.contains('block')) {
-                    const raw0 = state.revealOnFocus ? active.innerText : blockHtmlToMarkdown(active);
+                    const raw0 = wasRevealed ? active.innerText : blockHtmlToMarkdown(active);
                     active.setAttribute('data-raw', raw0);
-                    
-                    // Render the block immediately so WYSIWYG users don't see raw markdown
-                    renderBlockPreview(active, raw0);
-
-                    // Restore the caret by adding the length of the *rendered* pasted text.
-                    // renderBlockPreview just replaced the nodes the caret was in. Focusing
-                    // first: a selection set while the editor is blurred draws no caret, and
-                    // the next key goes nowhere (the "focus lost after pasting" report).
                     try {
-                        const temp = document.createElement('div');
-                        renderBlockPreview(temp, blockTexts[0]);
-                        const addedLength = (temp.innerText || '').length;
-                        if (typeof focusEditorNoScroll === 'function') focusEditorNoScroll();
-                        if (typeof setCaretAtOffset === 'function') {
-                            setCaretAtOffset(active, startOff + addedLength);
-                        }
-                    } catch (eCaret) {}
+                        const idx0 = DocumentModel.modelIndexOfEl(active);
+                        if (idx0 >= 0) DocumentModel.setBlockRaw(idx0, raw0);
+                    } catch (eSync0) {}
+
+                    if (wasRevealed) {
+                        active.innerText = raw0;
+                        try {
+                            if (typeof focusEditorNoScroll === 'function') focusEditorNoScroll();
+                            if (typeof setCaretAtOffset === 'function') {
+                                setCaretAtOffset(active, startOff + blockTexts[0].length);
+                            }
+                        } catch (eCaret) {}
+                    } else {
+                        // Render the block immediately so WYSIWYG users don't see raw markdown
+                        renderBlockPreview(active, raw0);
+
+                        // Restore the caret by adding the length of the *rendered* pasted text.
+                        // renderBlockPreview just replaced the nodes the caret was in. Focusing
+                        // first: a selection set while the editor is blurred draws no caret, and
+                        // the next key goes nowhere (the "focus lost after pasting" report).
+                        try {
+                            const temp = document.createElement('div');
+                            renderBlockPreview(temp, blockTexts[0]);
+                            const addedLength = (temp.innerText || '').length;
+                            if (typeof focusEditorNoScroll === 'function') focusEditorNoScroll();
+                            if (typeof setCaretAtOffset === 'function') {
+                                setCaretAtOffset(active, startOff + addedLength);
+                            }
+                        } catch (eCaret) {}
+                    }
                 }
                 updateStats();
                 updateOutline();
@@ -2541,7 +2561,7 @@
                 // end of the document and the caret sat in the middle of the paste.
                 let headMd = '';
                 try {
-                    headMd = state.revealOnFocus ? (active.innerText || '') : blockHtmlToMarkdown(active);
+                    headMd = isRevealedBlock(active) ? (active.innerText || '') : blockHtmlToMarkdown(active);
                 } catch (eH) {
                     try { headMd = active.innerText || ''; } catch (eI) { headMd = ''; }
                 }
@@ -2869,11 +2889,10 @@
          */
         function pasteLikeCtrlV(html, plain, plainOnly) {
             let uiInput = document.activeElement;
-            if (!(uiInput && (uiInput.tagName === 'INPUT' || uiInput.tagName === 'TEXTAREA')
-                && uiInput !== sourceEditor && (!editor || !editor.contains(uiInput)))) {
+            if (!(typeof window.tzIsTextUiInput === 'function' && window.tzIsTextUiInput(uiInput))) {
                 const last = window.__tzLastUiInput;
                 if (last && last.isConnected && !last.closest('[hidden]') && last.getClientRects().length > 0
-                    && last !== sourceEditor && (!editor || !editor.contains(last))) {
+                    && typeof window.tzIsTextUiInput === 'function' && window.tzIsTextUiInput(last)) {
                     uiInput = last;
                 } else {
                     uiInput = null;
@@ -4076,11 +4095,10 @@
             window.tzMenuCopyOrCut = function tzMenuCopyOrCut(isCut) {
                 try {
                     let uiInput = document.activeElement;
-                    if (!(uiInput && (uiInput.tagName === 'INPUT' || uiInput.tagName === 'TEXTAREA')
-                        && uiInput !== sourceEditor && (!editor || !editor.contains(uiInput)))) {
+                    if (!(typeof window.tzIsTextUiInput === 'function' && window.tzIsTextUiInput(uiInput))) {
                         const last = window.__tzLastUiInput;
                         if (last && last.isConnected && !last.closest('[hidden]') && last.getClientRects().length > 0
-                            && last !== sourceEditor && (!editor || !editor.contains(last))
+                            && typeof window.tzIsTextUiInput === 'function' && window.tzIsTextUiInput(last)
                             && (last.selectionEnd | 0) > (last.selectionStart | 0)) {
                             uiInput = last;
                         } else {
@@ -4870,7 +4888,7 @@
                     }
                 } catch (eT) {}
                 try {
-                    const tRaw = state.revealOnFocus ? (block.innerText || '') : blockHtmlToMarkdown(block);
+                    const tRaw = isRevealedBlock(block) ? (block.innerText || '') : blockHtmlToMarkdown(block);
                     if (tRaw != null) {
                         block.setAttribute('data-raw', tRaw);
                         if (typeof DocumentModel !== 'undefined') {
@@ -4988,8 +5006,8 @@
                 // The line it pushes down is the next number.
                 if (wl && wl.kind === 'ol') wholeLine = wholeLine.replace(/^([ \t]*)\d+/, '$1' + (wl.num + 1));
             } else if (raw == null || raw === '') {
-                raw = state.revealOnFocus ? (block.innerText || '') : blockHtmlToMarkdown(block);
-            } else if (state.revealOnFocus) {
+                raw = isRevealedBlock(block) ? (block.innerText || '') : blockHtmlToMarkdown(block);
+            } else if (isRevealedBlock(block)) {
                 // Prefer remaining text after deleteContents
                 const left = String(block.innerText || '').replace(/\u00a0/g, ' ');
                 if (left.trim().length <= String(raw).trim().length) raw = left;
