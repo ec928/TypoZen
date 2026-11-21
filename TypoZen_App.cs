@@ -12211,9 +12211,15 @@ namespace TypoZen
             cm.Placement = PlacementMode.AbsolutePoint;
             cm.HorizontalOffset = pt.X * sx;
             cm.VerticalOffset = pt.Y * sy;
-            // A context menu takes the keyboard from the WebView, and closing it gives it back
-            // to the window, not to the WebView (2026-11-21, from the code, not seen): after
-            // Heading 2 from right-click, typing would not reach the editor. Hand it back as
+            // The WebView's window keeps the keyboard while a WPF menu is open (seen
+            // 2026-11-21: right-click, then H typed "h" into the line behind the open menu;
+            // arrows and access keys never reached it). Pull input back to the window and
+            // give it to the menu, as OpenMenuByAccessKey does for the menu bar.
+            cm.Opened += (s, e) =>
+            {
+                try { Keyboard.Focus(cm); } catch { }
+            };
+            // Closing it gives the keyboard to the window, not to the WebView. Hand it back as
             // a closing top-level menu does (OnChromeMenuClosed); the page keeps a caret the
             // command has just placed.
             cm.Closed += (s, e) =>
@@ -12222,6 +12228,12 @@ namespace TypoZen
                 _returnEditorFocusPending = true;
                 Dispatcher.BeginInvoke(new Action(TryReturnEditorFocus), DispatcherPriority.ContextIdle);
             };
+            try
+            {
+                Activate();
+                Focus();                     // pull input back from the WebView's HWND
+            }
+            catch { }
             cm.IsOpen = true;
         }
 
