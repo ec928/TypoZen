@@ -5,7 +5,7 @@ Work agreed but not built, newest decisions first. Defects and product limits li
 
 ## A proper autosave / crash recovery (2026-11-22) — **noted, not built** (Ed: "one day")
 
-"Remember unsaved documents between sessions" (Preferences, off by default) stores unsaved
+"Remember unsaved documents between sessions" (a menu item beside Privacy Mode, off by default) stores unsaved
 tab text only when the session is written -- on opening, switching, moving or closing a tab,
 and on exit -- never while typing. Working in one tab, a crash loses everything typed since
 the file was opened (measured: `tests/session-restore-app.mjs`). Exit always asks Save / Don't
