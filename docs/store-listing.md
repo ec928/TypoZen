@@ -52,6 +52,14 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
+_Limit 1,500 characters. For the 0.22.9 package, written against 0.22.8 (submitted 2026-11-22). If 0.22.8 was never accepted, add the 0.22.8 text below and stay under the limit._
+
+- Fixed: in a long document, Delete or Backspace on an empty line, or at the start or end of a line, could leave no cursor, so the next key went astray. The cursor now stays where you are.
+- Fixed: text typed with the cursor beside a horizontal rule was not saved. The cursor now steps over a rule line, and nothing typed is lost.
+- Fixed: Delete on an empty line above a table puts the cursor in the table's first cell, and above a picture, on the picture's line.
+
+_The 0.22.8 package text:_
+
 _Limit 1,500 characters. For the 0.22.8 package, written against 0.22.1 (submitted 2026-11-22). If 0.22.1 was never accepted, use the 0.22.1 text below with these added, and stay under the limit._
 
 - Fixed: Print and Export PDF from Source printed one page of a long document. Every line now prints.
@@ -127,7 +135,7 @@ Every item is changed or confirmed before Submit; nothing is left for a second p
 | 1 | Product identity | "TypoZen: ePub & PDF Reader, Markdown Editor" reserved |
 | 2 | Packages | the newest MSIX (0.20.24.0); every other package removed from the submission |
 | 3 | Store listing: Product name | the new name selected |
-| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.22.8 text above (merged with the 0.20.24 text if 0.21.5 was never accepted). Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
+| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.22.9 text above (merged with the 0.20.24 text if 0.21.5 was never accepted). Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
 | 5 | Store listing: Screenshots | Ed's six, in the order of the captions, with the captions |
 | 6 | Store listing: artwork | the redrawn 16:9 hero from `dist-storeart\` (no text); Poster and Box art are for games -- remove them if uploaded |
 | 7 | Properties: Category | Books & reference (see Category below) -- confirm, do not assume |
