@@ -11,6 +11,7 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
+import { padPage, LARGE } from './large-pad.mjs';
 
 const appDir = process.env.TZ_ROOT || path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const deadline = setTimeout(() => { console.error('  FAIL over budget (60 s)'); process.exit(1); }, 60000);
@@ -24,6 +25,7 @@ function same(msg, got, want) {
 const browser = await puppeteer.launch({ headless: 'new', protocolTimeout: 20000 });
 try {
     const page = await browser.newPage();
+    await padPage(page);   // cases in a long file first (large-pad.mjs)
     await page.setViewport({ width: 1100, height: 900 });
     page.on('pageerror', e => { failed++; console.error('  FAIL page threw: ' + e.message); });
     await page.evaluateOnNewDocument(() => {

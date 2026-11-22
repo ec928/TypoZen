@@ -10,6 +10,7 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
+import { padPage } from './large-pad.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.join(__dirname, '..');
@@ -22,6 +23,7 @@ function assert(cond, msg) {
 const browser = await puppeteer.launch({ headless: 'new' });
 try {
     const page = await browser.newPage();
+    await padPage(page);   // cases in the middle of a long file (large-pad.mjs)
     await page.goto('file:///' + path.join(appDir, 'TypoZen_Template.html').replace(/\\/g, '/'), { waitUntil: 'load' });
     await page.waitForFunction(() => typeof handleCommand === 'function', { timeout: 15000 });
     await page.evaluate(m => loadMarkdownContent(m), 'Hello world here.\n\nThe **strong words** end.\n\nGo please.\n');

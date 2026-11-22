@@ -16,6 +16,7 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
+import { padPage, LARGE } from './large-pad.mjs';
 import { settled, untilPage } from './settle.mjs';
 
 const appDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -30,6 +31,7 @@ function same(msg, got, want) {
 const browser = await puppeteer.launch({ headless: 'new', protocolTimeout: 20000 });
 try {
     const page = await browser.newPage();
+    await padPage(page);   // cases in a long file first (large-pad.mjs)
     await page.setViewport({ width: 1400, height: 900 });
     page.on('pageerror', e => { failed++; console.error('  FAIL page threw: ' + e.message); });
     await page.goto('file:///' + path.join(appDir, 'TypoZen_Template.html').replace(/\\/g, '/'), { waitUntil: 'load' });

@@ -189,6 +189,22 @@ that all ran on ten-line documents. After an edit, re-find the line by its model
 (`editor.contains(anchorNode)`). `tests/cross-mode-sweep-browser.mjs` and
 `tests/large-context-browser.mjs` hold this; add a case there for any new edit.
 
+**The gate runs editing suites in a long file by default.** An editing suite that loads a
+small document calls `padPage(page)` (`tests/large-pad.mjs`) before `page.goto`: every
+`loadMarkdownContent` from the test then loads the case followed by 2,400 paragraphs (4,805
+blocks, windowed), and `getMarkdownContent` / `sourceEditor.value` read by the test return the
+case's part -- or "PADDING ... CHANGED" if an edit reached outside it. The gate runs each such
+suite once, in the long file; `TZ_DOC_SIZE=small` runs one on its small file by hand, and the
+keyboard cases keep their small-file part. `padPage(page, { above: true })`
+puts padding above too (the case in the middle); suites that find lines by model index or as
+"the first block" cannot use it. The keyboard cases pad both sides
+(`keyboard-editing-{preview,pages,source}-large-browser`), and the `large-*-browser` suites
+attack selections, navigation, formatting and Source on `large-scroll-mixed.md`. A case about
+the start or end of the FILE runs small only (`if (!LARGE)`). Write a new editing suite with
+`padPage` from the start. This found two bugs on its first run that small files hid: Backspace
+/ Delete joins losing the caret (0.22.8), and Undo after a Source edit putting the caret past
+the change (0.22.11).
+
 ## Rules kept once, and the sweeps that hold them (2026-11-22)
 
 - **Code fences: `tzFenceOpen`, `tzFenceClose`, `tzFenceRaw`, `tzFenceRawClosed`,

@@ -8,6 +8,7 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
+import { padPage, LARGE } from './large-pad.mjs';
 import { settled } from './settle.mjs';
 
 const appDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -22,6 +23,7 @@ function same(msg, got, want) {
 const browser = await puppeteer.launch({ headless: 'new', protocolTimeout: 20000 });
 try {
     const page = await browser.newPage();
+    await padPage(page);   // cases in the middle of a long file (large-pad.mjs)
     await page.setViewport({ width: 1400, height: 900 });
     page.on('pageerror', e => { failed++; console.error('  FAIL page threw: ' + e.message); });
     await page.goto('file:///' + path.join(appDir, 'TypoZen_Template.html').replace(/\\/g, '/'), { waitUntil: 'load' });
@@ -48,10 +50,13 @@ try {
     const srcAt = async (pos) => page.evaluate((p) => { sourceEditor.focus(); sourceEditor.setSelectionRange(p, p); }, pos);
 
     console.log('\n=== Preview ===');
-    await load('Intro\n');
-    await at(1);
-    await keys('> [!TIP]', 'Enter', 'Body', 'Enter', 'Enter', 'After');
-    same('type a callout header, Enter, a body, Enter twice to leave', await saved(), 'Intro\n> [!TIP]\n> Body\n\nAfter');
+    // Typed on the file's empty last line: about the end of the FILE, so the small file only.
+    if (!LARGE) {
+        await load('Intro\n');
+        await at(1);
+        await keys('> [!TIP]', 'Enter', 'Body', 'Enter', 'Enter', 'After');
+        same('type a callout header, Enter, a body, Enter twice to leave', await saved(), 'Intro\n> [!TIP]\n> Body\n\nAfter');
+    }
 
     await load('> [!NOTE]\n> Body line\n\nNext.');
     await at(1); await keys('Enter', 'Added');

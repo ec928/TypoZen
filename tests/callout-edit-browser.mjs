@@ -11,6 +11,7 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
+import { padPage, LARGE } from './large-pad.mjs';
 import { settled } from './settle.mjs';
 
 const appDir = process.env.TZ_APP_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -23,6 +24,7 @@ function check(ok, msg, got) {
 const browser = await puppeteer.launch({ headless: 'new', protocolTimeout: 15000 });
 try {
     const page = await browser.newPage();
+    await padPage(page);   // cases in a long file first (large-pad.mjs)
     await page.setViewport({ width: 1100, height: 800 });
     page.on('pageerror', e => check(false, 'page threw: ' + e.message));
     await page.evaluateOnNewDocument(() => {

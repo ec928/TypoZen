@@ -23,6 +23,7 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
+import { padPage, LARGE } from './large-pad.mjs';
 
 const appDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CASES = parseInt(process.env.CASES || '15', 10);
@@ -67,6 +68,7 @@ function check(label, ok, detail) {
 const browser = await puppeteer.launch({ headless: 'new', protocolTimeout: 30000 });
 try {
     const page = await browser.newPage();
+    await padPage(page);   // cases in a long file first (large-pad.mjs)
     await page.setViewport({ width: 1100, height: 900 });
     page.on('pageerror', e => { failed++; failures.push('  FAIL page threw: ' + e.message); });
     await page.evaluateOnNewDocument(() => {

@@ -12,6 +12,7 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
+import { padPage, LARGE } from './large-pad.mjs';
 import { sleep } from './settle.mjs';
 
 const appDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -27,6 +28,7 @@ const browser = await puppeteer.launch({ headless: 'new' });
 try { await browser.defaultBrowserContext().overridePermissions('file://', ['clipboard-read', 'clipboard-write', 'clipboard-sanitized-write']); } catch (e) {}
 try {
     const page = await browser.newPage();
+    await padPage(page);   // cases in a long file first (large-pad.mjs)
     await page.setViewport({ width: 1200, height: 800 });
     page.on('pageerror', e => { failed++; console.error('  FAIL page threw: ' + e.message); });
     const url = 'file:///' + path.join(appDir, 'TypoZen_Template.html').replace(/\\/g, '/');

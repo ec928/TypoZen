@@ -55,7 +55,7 @@ const FAST_CORE = new Set([
 
 // Helpers and generators, not suites; the same rule run-tests.ps1 and the build used.
 const helpers = new Set(['app-harness.mjs', 'build-test-template.mjs', 'engine-source.mjs', 'settle.mjs', 'epub-zip.mjs',
-    'fonts-ab.mjs', 'scripts-ab.mjs', 'cm-ab.mjs', 'narrator-sidecar.mjs', 'run-gate.mjs', 'keyboard-editing-cases.mjs', 'compare-release.mjs', 'version-smoke.mjs', 'shared-rules.mjs']);
+    'fonts-ab.mjs', 'scripts-ab.mjs', 'cm-ab.mjs', 'narrator-sidecar.mjs', 'run-gate.mjs', 'keyboard-editing-cases.mjs', 'compare-release.mjs', 'version-smoke.mjs', 'shared-rules.mjs', 'large-pad.mjs']);
 const all = fs.readdirSync(here).filter(f => f.endsWith('.mjs') && !helpers.has(f)
     && !f.startsWith('make-') && !f.startsWith('_')).sort();
 const pending = all.filter(f => f.endsWith('-pending.mjs'));
@@ -67,6 +67,10 @@ if (appFilter) {
 let headless = all.filter(f => !f.endsWith('-pending.mjs') && !f.endsWith('-app.mjs'));
 if (tier === 'fast') headless = headless.filter(f => FAST_CORE.has(f));
 else if (process.env.RUN_PENDING_E2E === '1') headless = headless.concat(pending);
+// Large documents are the default (Ed, 2026-11-22): a suite that calls padPage (large-pad.mjs)
+// runs its cases in a long file, once. The small file is not run again per suite (that doubled
+// the gate's editing time); TZ_DOC_SIZE=small runs one by hand, and the keyboard cases keep
+// their small-file part (keyboard-editing-preview/source-browser).
 
 let past = {};
 try { past = JSON.parse(fs.readFileSync(timesFile, 'utf8')); } catch (e) { }

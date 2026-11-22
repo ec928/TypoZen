@@ -33,6 +33,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import puppeteer from 'puppeteer';
+import { padPage, LARGE } from './large-pad.mjs';
 import { settled } from './settle.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -98,6 +99,7 @@ async function main() {
     const browser = await puppeteer.launch({ headless: 'new' });
     try {
         const page = await browser.newPage();
+    await padPage(page);   // cases in a long file first (large-pad.mjs)
         await page.setViewport({ width: 1280, height: 900 });
         page.on('pageerror', e => { failed++; console.error('  FAIL page threw: ' + e.message); });
 
