@@ -3,7 +3,14 @@
 Work agreed but not built, newest decisions first. Defects and product limits live in
 `known-issues.md`; this file is what is still to do.
 
-## Indented code fences show as plain lines in Preview (2026-11-22) — **open, not started**
+## Indented code fences show as plain lines in Preview (2026-11-22) — **built** in 0.22.3
+
+As built: a fence may be indented up to three spaces wherever Preview finds one (the block
+split, the renderer, the paste split, the height estimate). The code lines are drawn and
+saved as written, indent included, so the round trip is exact by construction; the
+serializer already kept the fence lines. An opening fence may not have a backtick after it
+(Markdown's rule), so "```` ```css ```` and" stays inline code. `tests/indented-fence-browser.mjs`;
+real-files-roundtrip passes on every real file. The original report follows.
 
 Preview only takes a fence that starts in column 0 (`splitMarkdownToBlockRaws`, 05-model.js).
 Markdown and Source allow up to three spaces, so a code block inside a list item
