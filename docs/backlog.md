@@ -3,6 +3,22 @@
 Work agreed but not built, newest decisions first. Defects and product limits live in
 `known-issues.md`; this file is what is still to do.
 
+## A proper autosave / crash recovery (2026-11-22) — **noted, not built** (Ed: "one day")
+
+"Remember unsaved documents between sessions" (Preferences, off by default) stores unsaved
+tab text only when the session is written -- on opening, switching, moving or closing a tab,
+and on exit -- never while typing. Working in one tab, a crash loses everything typed since
+the file was opened (measured: `tests/session-restore-app.mjs`). Exit always asks Save / Don't
+save, and Don't save discards, so on a normal exit it keeps nothing either.
+
+When this is built, the rule (Ed): **unsaved work goes to a recovery copy, never over the
+file.** Ed adds temporary notes he does not mean to keep (a video call) and reverts most of
+the time; Word's autosave on by default writes those into the file, and a crash leaves the
+file damaged. So: write the recovery copy a couple of seconds after typing stops, off the UI
+thread; after a crash, reopen it as an unsaved document over the untouched original; Don't
+save on exit deletes it. Not wanted: "hot exit" (closing without the Save / Don't save prompt
+and restoring the edits next time) -- Ed discards changes about 75% of the time.
+
 ## Indented code fences show as plain lines in Preview (2026-11-22) — **built** in 0.22.3
 
 As built: a fence may be indented up to three spaces wherever Preview finds one (the block
