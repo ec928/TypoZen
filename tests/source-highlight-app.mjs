@@ -161,7 +161,13 @@ async function codemirrorChecks(app) {
     console.log('\n=== clearing the query clears the marks ===');
     // Alt+S closing the Search sidebar clears the query through runFind(''), which returns
     // before the per-surface branches -- so the marks once survived it.
-    await app.eval(() => runFind('', false, { navigate: false }));
+    // Empty the boxes too, as a reader clearing the search does: left holding "bullet", the
+    // sidebar's own debounced search (2 s) re-ran it after the clear when the machine was
+    // busy, and the marks came back (a race in this suite, not the product; 2026-11-22).
+    await app.eval(() => {
+        for (const id of ['sidebarSearchInput', 'findInput']) { const el = document.getElementById(id); if (el) el.value = ''; }
+        runFind('', false, { navigate: false });
+    });
     await app.page.waitForFunction(() => sourceEditor.searchMarks().length === 0, { timeout: 3000 }).catch(() => {});
     const cleared = await app.eval(() => ({ marks: sourceEditor.searchMarks().length,
         drawn: document.querySelectorAll('#source-cm .tz-src-hit').length }));
