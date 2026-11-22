@@ -218,36 +218,26 @@
             let codeFence = null;
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
-                // Backtick fences only. A "~~~" line is a scene break in prose, and taking it
-                // as a fence turned everything up to the next one into code (0.19.2).
-                // Up to three spaces before a fence, as Markdown and Source allow: a code block
-                // in a list item is indented ("- step" then "  ```js"). Preview took only column
-                // 0, so it showed each code line as a paragraph, and a closing "   ```" was
-                // missed and the block ran on into the text after it (2026-11-22). The code
-                // lines are shown and saved as written, indent and all. No backtick after the
-                // fence (Markdown's rule): "```` ```css ```` and" is inline code, not a fence.
-                const fenceMatch = line.match(/^ {0,3}(`{3,})[^`]*$/);
-                if (fenceMatch) {
-                    if (currentCodeBlock !== null) {
-                        if (codeFence && fenceMatch[1].length >= codeFence.length) {
-                            currentCodeBlock.push(line);
-                            out.push(currentCodeBlock.join('\n'));
-                            currentCodeBlock = null;
-                            codeFence = null;
-                            continue;
-                        }
-                    } else {
-                        if (currentTableBlock !== null) {
-                            out.push(currentTableBlock.join('\n'));
-                            currentTableBlock = null;
-                        }
-                        currentCodeBlock = [line];
-                        codeFence = fenceMatch[1];
-                        continue;
-                    }
-                }
+                // The fence rule is tzFenceOpen / tzFenceClose (01-core.js): backticks only,
+                // indented up to three spaces, the code lines kept as written. A code block in
+                // a list item is indented, and Preview once took only column 0 (2026-11-22).
                 if (currentCodeBlock !== null) {
                     currentCodeBlock.push(line);
+                    if (tzFenceClose(line, codeFence)) {
+                        out.push(currentCodeBlock.join('\n'));
+                        currentCodeBlock = null;
+                        codeFence = null;
+                    }
+                    continue;
+                }
+                const open = tzFenceOpen(line);
+                if (open) {
+                    if (currentTableBlock !== null) {
+                        out.push(currentTableBlock.join('\n'));
+                        currentTableBlock = null;
+                    }
+                    currentCodeBlock = [line];
+                    codeFence = open.ticks;
                     continue;
                 }
                 if (line.trim().startsWith('|')) {
@@ -495,7 +485,7 @@
                 const def = this.rowHeight || 28;
                 raw = String(raw == null ? '' : raw);
                 if (!raw.trim()) return def;
-                if (/^ {0,3}`{3,}[^`\n]*(\n|$)/.test(raw)) {
+                if (tzFenceRaw(raw)) {
                     const lines = raw.split('\n').length;
                     return Math.max(def, Math.min(900, lines * 18 + 20));
                 }
@@ -2150,13 +2140,13 @@
             try {
                 if (!block || !block.classList || !block.classList.contains('block')) return false;
                 const raw = block.getAttribute('data-raw') || '';
-                if (!/^\s*(```|~~~)/.test(raw)) return false;
+                if (!tzFenceRaw(raw)) return false;
                 const code = block.querySelector('pre code') || block.querySelector('pre');
                 const sel = window.getSelection();
                 if (!code || !sel || !sel.rangeCount || !sel.isCollapsed || !code.contains(sel.anchorNode)) return false;
                 const lines = raw.split('\n');
                 const open = lines[0];
-                const closed = lines.length > 1 && /^\s*(```|~~~)\s*$/.test(lines[lines.length - 1]);
+                const closed = tzFenceRawClosed(raw);
                 // Use live code.textContent: sel.deleteFromDocument() may have just removed a
                 // selection inside <code> before pasteIntoCodeFence ran, making data-raw stale.
                 const body = (code.textContent || '').replace(/\r\n?/g, '\n').replace(/\n$/, '');
@@ -2362,40 +2352,12 @@
                 }
             } catch (eCell) {}
 
-            const rawLines = String(text).split(/\r?\n/);
-            const blockTexts = [];
+            // The pasted text as blocks, by the same split a loaded document gets. This was a
+            // copy of it that had drifted: it closed a fence on any fence line, and a fence
+            // straight after a table put the table after the code (2026-11-22).
+            const blockTexts = String(text) === '' ? [] : splitMarkdownToBlockRaws(text);
             let pasteCaretBeforeTail = '';
             let pasteCaretAfterHead = null;
-            let currentCode = null;
-            let currentTable = null;
-            for (let i = 0; i < rawLines.length; i++) {
-                const l = rawLines[i];
-                if (/^ {0,3}`{3,}[^`]*$/.test(l)) {   // as splitMarkdownToBlockRaws
-                    if (currentCode !== null) {
-                        currentCode.push(l);
-                        blockTexts.push(currentCode.join('\n'));
-                        currentCode = null;
-                    } else {
-                        currentCode = [l];
-                    }
-                    continue;
-                }
-                if (currentCode !== null) {
-                    currentCode.push(l);
-                    continue;
-                }
-                if (l.trim().startsWith('|')) {
-                    if (currentTable !== null) currentTable.push(l);
-                    else currentTable = [l];
-                    continue;
-                } else if (currentTable !== null) {
-                    blockTexts.push(currentTable.join('\n'));
-                    currentTable = null;
-                }
-                blockTexts.push(l);
-            }
-            if (currentCode !== null) blockTexts.push(currentCode.join('\n'));
-            if (currentTable !== null) blockTexts.push(currentTable.join('\n'));
 
             if (blockTexts.length === 0) {
                 HistoryManager.commitEdit();
@@ -2596,7 +2558,7 @@
                     let lastHasMarker = false;
                     try {
                         const lp = String(blockTexts[blockTexts.length - 1] || '');
-                        lastHasMarker = !/^\s*(```|\|)/.test(lp)
+                        lastHasMarker = !(tzFenceRaw(lp) || /^\s*\|/.test(lp))
                             && /^[ \t]*(#{1,6}\s+|>\s+|[-*+]\s+(?:\[[ xX]?\]\s+)?|\d+\.\s+)/.test(lp);
                     } catch (eLm) {}
                     const lastPasted = String(blockTexts[blockTexts.length - 1] || '');
@@ -2651,7 +2613,7 @@
                 })();
                 if (cutTail) {
                     const last = blockTexts.length - 1;
-                    if (/^\s*(```|\|)/.test(blockTexts[last])) blockTexts.push(cutTail);
+                    if (tzFenceRaw(blockTexts[last]) || /^\s*\|/.test(blockTexts[last])) blockTexts.push(cutTail);
                     else {
                         // A marker carried onto the end of a pasted line is text there, not
                         // a marker ("B## Head"). Rendered on its own it shows no "## ", so
@@ -4697,7 +4659,7 @@
             const lines = normalizeBlockRaw(readBlockRawSafe(block)).split('\n');
             const open = lines[0];
             const last = lines[lines.length - 1];
-            const closed = lines.length > 1 && /^\s*`{3,}\s*$/.test(last);
+            const closed = tzFenceRawClosed(lines.join('\n'));
             const rawOf = function (t) { return open + '\n' + t + (closed ? '\n' + last : ''); };
             const leaving = range.collapsed && start === text.length && /\n$/.test(text);
 
@@ -5432,7 +5394,12 @@
                 // like c++, must not change because a letter was typed in the code.
                 const was = String(block.getAttribute('data-raw') || '').split('\n');
                 const lastWas = was[was.length - 1];
-                const open = /^\s*```/.test(was[0]) ? was[0] : '```' + lang;
+                const open = tzFenceOpen(was[0]) ? was[0] : '```' + lang;
+                // Closed by the same rule the renderer uses to decide what is code (01-core.js).
+                // The two rules differed (any backtick line here, a long-enough one there), so
+                // they could disagree about a "```" last line of a "````" block; not seen to
+                // lose or double text (fence-rule-browser checks it), but they now agree.
+                const wasClosed = tzFenceRawClosed(was.join('\n'));
                 // The whole <pre>, not only the <code> in it. With the code emptied (a delete or
                 // a typed letter over a selection that began at the block's first character)
                 // the caret sits beside the empty <code>, what is typed or pasted next goes
@@ -5440,8 +5407,8 @@
                 const preEl = clone.querySelector('pre');
                 const code = (preEl && preEl.contains(codeEl) ? preEl.textContent : '') || codeEl.textContent || codeEl.innerText || '';
                 // A fence the author never closed stays open: it runs to the end of the file.
-                if (/^\s*```/.test(was[0]) && !(was.length > 1 && /^\s*`{3,}\s*$/.test(lastWas))) return open + '\n' + code;
-                const close = was.length > 1 && /^\s*`{3,}\s*$/.test(lastWas) ? lastWas : '```';
+                if (tzFenceOpen(was[0]) && !wasClosed) return open + '\n' + code;
+                const close = wasClosed ? lastWas : '```';
                 return open + '\n' + code + '\n' + close;
             }
 

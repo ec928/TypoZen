@@ -55,7 +55,7 @@ const FAST_CORE = new Set([
 
 // Helpers and generators, not suites; the same rule run-tests.ps1 and the build used.
 const helpers = new Set(['app-harness.mjs', 'build-test-template.mjs', 'engine-source.mjs', 'settle.mjs', 'epub-zip.mjs',
-    'fonts-ab.mjs', 'scripts-ab.mjs', 'cm-ab.mjs', 'narrator-sidecar.mjs', 'run-gate.mjs', 'keyboard-editing-cases.mjs', 'compare-release.mjs', 'version-smoke.mjs']);
+    'fonts-ab.mjs', 'scripts-ab.mjs', 'cm-ab.mjs', 'narrator-sidecar.mjs', 'run-gate.mjs', 'keyboard-editing-cases.mjs', 'compare-release.mjs', 'version-smoke.mjs', 'shared-rules.mjs']);
 const all = fs.readdirSync(here).filter(f => f.endsWith('.mjs') && !helpers.has(f)
     && !f.startsWith('make-') && !f.startsWith('_')).sort();
 const pending = all.filter(f => f.endsWith('-pending.mjs'));

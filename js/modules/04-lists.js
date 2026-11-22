@@ -1114,8 +1114,8 @@
         /** One end of a delete inside a fenced code block: keep the fence, cut its code. */
         function trimFenceAt(raw, off, side) {
             const lines = String(raw).split('\n');
-            if (!/^\s*(```|~~~)/.test(lines[0])) return null;
-            const closed = lines.length > 1 && /^\s*(```|~~~)\s*$/.test(lines[lines.length - 1]);
+            if (!tzFenceOpen(lines[0])) return null;
+            const closed = tzFenceRawClosed(raw);
             const body = lines.slice(1, closed ? -1 : undefined).join('\n');
             const el = document.createElement('div');
             el.className = 'block';
@@ -1128,7 +1128,7 @@
         }
 
         function isTableRaw(raw) { const l = String(raw).split('\n'); return l.length >= 2 && /^\s*\|/.test(l[0]) && /^\s*\|?\s*:?-/.test(l[1]); }
-        function isFenceRaw(raw) { return /^\s*(```|~~~)/.test(String(raw)); }
+        function isFenceRaw(raw) { return tzFenceRaw(raw); }
 
         /**
          * The blocks that replace lines A..F when either end is in a table or code block, or
@@ -2261,7 +2261,7 @@
         /** True if this block is allowed to contain internal newlines (fence / table). */
         function isMultilineBlockRaw(raw) {
             raw = String(raw == null ? '' : raw);
-            if (/^\s*```/.test(raw)) return true;
+            if (tzFenceRaw(raw)) return true;
             // GFM table: header row with pipes (and usually a separator line)
             const lines = raw.split('\n');
             if (lines.length > 1 && lines.some(function (l) { return /^\s*\|/.test(l); })) return true;
@@ -2691,8 +2691,9 @@
          *  callout's marker line, a line that is only a picture. */
         function isInlineUnmarkableRaw(raw) {
             raw = String(raw == null ? '' : raw);
-            return isMultilineBlockRaw(raw)
-                || /^\s*(?:```|~~~|\||(?:---+|\*\*\*+|___+)\s*$|>\s*\[![A-Za-z]+\]|!\[[^\]]*\]\([^)]*\)\s*$)/i.test(raw);
+            // "~~~" here is the scene break, a rule, not a fence.
+            return isMultilineBlockRaw(raw) || tzFenceOpen(raw.split('\n')[0])
+                || /^\s*(?:~~~|\||(?:---+|\*\*\*+|___+)\s*$|>\s*\[![A-Za-z]+\]|!\[[^\]]*\]\([^)]*\)\s*$)/i.test(raw);
         }
 
         /**
@@ -3937,11 +3938,11 @@
 
                 let olNum = 1;
                 // Code inside a fence is left alone, as are the fence lines themselves.
-                let inFence = false;
-                full.substring(0, s).split('\n').forEach(l => { if (/^\s*(```|~~~)/.test(l)) inFence = !inFence; });
-                const out = lines.map(line => {
-                    if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; return line; }
-                    if (inFence) return line;
+                // Which lines are code: the one fence rule over the whole text (01-core.js).
+                const fenceStates = tzFenceLineStates(full.split('\n'));
+                const firstLine = full.substring(0, s).split('\n').length - 1;
+                const out = lines.map((line, j) => {
+                    if (fenceStates[firstLine + j]) return line;
                     if (!line.trim() && lines.length > 1) return line; // keep blank separators
                     const next = transformRawForFormat(line, type, { forceOff, forceOn, olNum });
                     if ((type === 'ol' || type === 'ordered') && forceOn && line.trim() && next !== line) olNum++;
@@ -4225,21 +4226,17 @@
 
         /** For each line, true when it is a fence line or inside a fenced block. */
         function fenceMapOfLines(lines) {
-            const out = [];
-            let open = null;
+            // A Preview block can hold a whole fenced block (several lines): that is one entry,
+            // true. The rest is the one fence rule (tzFenceLineStates, 01-core.js).
+            const out = new Array(lines.length);
+            const single = [], at = [];
             for (let i = 0; i < lines.length; i++) {
                 const s = String(lines[i] == null ? '' : lines[i]);
-                // A Preview block can hold a whole fenced block (several lines).
-                if (s.indexOf('\n') >= 0) { out.push(true); continue; }
-                const m = s.match(/^\s*(```+|~~~+)/);
-                if (open) {
-                    out.push(true);
-                    if (m && m[1].charAt(0) === open.charAt(0) && m[1].length >= open.length) open = null;
-                } else if (m) {
-                    out.push(true);
-                    open = m[1];
-                } else out.push(false);
+                if (s.indexOf('\n') >= 0) out[i] = true;
+                else { single.push(s); at.push(i); }
             }
+            const st = tzFenceLineStates(single);
+            for (let k = 0; k < at.length; k++) out[at[k]] = st[k];
             return out;
         }
 

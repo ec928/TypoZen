@@ -2347,23 +2347,16 @@
 
             // Code Blocks (fenced). Fences must take precedence over tables so ASCII art and diagrams with pipes survive.
             // Backticks only, as splitMarkdownToBlockRaws: "~~~" is a scene break in prose.
-            // Up to three spaces before the fence (splitMarkdownToBlockRaws). The code lines
-            // are drawn as written, indent included, so what is saved is what was there.
-            const fenceMatch = (lines[0] || '').match(/^ {0,3}(`{3,})([^`]*)$/);
-            if (fenceMatch) {
+            // The fence rule is tzFenceOpen / tzFenceClose (01-core.js), as the block split and
+            // the serializer use it, so all three agree on which line closes the block. The
+            // code lines are drawn as written, indent included, so what is saved is what was there.
+            const fenceOpen = tzFenceOpen(lines[0]);
+            if (fenceOpen) {
                 clearListIndentClasses(block);
                 block.classList.remove('list-block');
                 block.removeAttribute('data-list-indent');
-                const fenceLen = fenceMatch[1].length;
-                const lang = fenceMatch[2].trim();
-                let end = lines.length;
-                if (lines.length > 1) {
-                    const last = (lines[lines.length - 1] || '').trim();
-                    const lastMatch = last.match(/^(`{3,})$/);
-                    if (lastMatch && lastMatch[1].length >= fenceLen) {
-                        end = lines.length - 1;
-                    }
-                }
+                const lang = fenceOpen.info;
+                const end = tzFenceRawClosed(cleanRaw) ? lines.length - 1 : lines.length;
                 const code = lines.slice(1, end).join('\n');
                 // A last empty line has no height of its own; the <br> gives the caret somewhere
                 // to be, and textContent, which the serializer reads, does not see it.

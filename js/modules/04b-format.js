@@ -780,11 +780,7 @@
                     let lineEnd = start;
                     while (lineEnd < full.length && full.charAt(lineEnd) !== '\n') lineEnd++;
                     const line = full.slice(lineStart, lineEnd);
-                    let inFence = false;
-                    full.substring(0, lineStart).split('\n').forEach(function (l) {
-                        if (/^\s*(```|~~~)/.test(l)) inFence = !inFence;
-                    });
-                    if (inFence || /^\s*(```|~~~)/.test(line) || !String(line).trim()
+                    if (tzFenceAt(full, lineStart) || !String(line).trim()
                         || (typeof isInlineUnmarkableRaw === 'function' && isInlineUnmarkableRaw(line))) {
                         return true;
                     }
@@ -818,12 +814,11 @@
                     while (e < full.length && full.charAt(e) !== '\n') e++;
                     const lines = full.substring(s, e).split('\n');
                     // Code inside a fence is not marked: its lines got "**" written into them.
-                    let inFence = false;
-                    full.substring(0, s).split('\n').forEach(function (l) { if (/^\s*(```|~~~)/.test(l)) inFence = !inFence; });
+                    const fenceStates = tzFenceLineStates(full.split('\n'));
+                    const firstLine = full.substring(0, s).split('\n').length - 1;
                     const focus = {};
                     lines.forEach(function (line, i) {
-                        if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; return; }
-                        if (!inFence && String(line).trim()) focus[i] = true;
+                        if (!fenceStates[firstLine + i] && String(line).trim()) focus[i] = true;
                     });
                     const keys = Object.keys(focus).map(Number);
                     if (!keys.length) return true;

@@ -475,8 +475,7 @@
                 // where ">" is a prompt or an operator: only then is the text above scanned.
                 const q = !m ? /^([ \t]*)((?:>[ \t]?)+)(.*)$/.exec(line) : null;
                 if (q) {
-                    let inFence = false;
-                    full.substring(0, ls).split('\n').forEach(function (l) { if (/^\s*(```|~~~)/.test(l)) inFence = !inFence; });
+                    const inFence = tzFenceAt(full, ls);
                     let le = start;
                     while (le < full.length && full.charAt(le) !== '\n') le++;
                     if (!inFence) {
@@ -525,9 +524,7 @@
                 const line = full.substring(ls, start);
                 const markerOnly = /^[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?|(?:>[ \t]?)*>[ \t]+)$/;
                 if (!markerOnly.test(line)) return;
-                let inFence = false;
-                full.substring(0, ls).split('\n').forEach(function (l) { if (/^\s*(```|~~~)/.test(l)) inFence = !inFence; });
-                if (inFence) return;
+                if (tzFenceAt(full, ls)) return;
                 e.preventDefault();
                 HistoryManager.beginEdit();
                 sourceEditor.setRangeText('', ls, start, 'end');

@@ -58,6 +58,66 @@
             }
         }
 
+        // --- CODE FENCES: the one rule, used everywhere -----------------------------------
+        //
+        // A code block opens with three or more backticks, indented by at most three
+        // spaces, with no backtick after them ("```js"); it closes with at least as many
+        // backticks and nothing else, indented at most three spaces. As Markdown, and as
+        // Source shows it. "~~~" is not a fence here: in prose it is a scene break, and
+        // taking it as one turned everything after it into code (0.19.2).
+        //
+        // This rule was written out in some twenty places, with five different regexes:
+        // the edit helpers and the Source line scanners took "~~~" and any indent, the
+        // block split did not, so Enter, a format or a list command in Source treated the
+        // text after a "~~~" line as code while Preview showed it as prose (2026-11-22).
+
+        /** The opening fence on this line, or null: { ticks: '```', info: 'js' }. */
+        function tzFenceOpen(line) {
+            const m = /^ {0,3}(`{3,})([^`]*)$/.exec(String(line == null ? '' : line));
+            return m ? { ticks: m[1], info: m[2].trim() } : null;
+        }
+        /** Does this line close a fence opened with `ticks` (any fence, when omitted)? */
+        function tzFenceClose(line, ticks) {
+            const m = /^ {0,3}(`{3,})[ \t]*$/.exec(String(line == null ? '' : line));
+            return !!m && m[1].length >= (ticks ? ticks.length : 3);
+        }
+        /** Is this block (a raw from splitMarkdownToBlockRaws) a code block? */
+        function tzFenceRaw(raw) {
+            return !!tzFenceOpen(String(raw == null ? '' : raw).split('\n')[0]);
+        }
+        /** Is this code block's last line its closing fence? */
+        function tzFenceRawClosed(raw) {
+            const lines = String(raw == null ? '' : raw).split('\n');
+            const open = tzFenceOpen(lines[0]);
+            return !!open && lines.length > 1 && tzFenceClose(lines[lines.length - 1], open.ticks);
+        }
+        /**
+         * For each line of a text, whether it belongs to a code block, fence lines
+         * included. What the Source line scanners need to leave code alone.
+         */
+        function tzFenceLineStates(lines) {
+            const out = new Array(lines.length);
+            let open = null;
+            for (let i = 0; i < lines.length; i++) {
+                if (open) {
+                    out[i] = true;
+                    if (tzFenceClose(lines[i], open.ticks)) open = null;
+                } else {
+                    open = tzFenceOpen(lines[i]);
+                    out[i] = !!open;
+                }
+            }
+            return out;
+        }
+        /** Is the line holding `offset` in this text inside a code block (or a fence line)? */
+        function tzFenceAt(text, offset) {
+            text = String(text == null ? '' : text);
+            const end = text.indexOf('\n', offset | 0);
+            const upTo = text.substring(0, end < 0 ? text.length : end).split('\n');
+            const st = tzFenceLineStates(upTo);
+            return !!st[st.length - 1];
+        }
+
         /**
          * Generated empty-editor hint, never authored. innerText includes ::before, so
          * a flush of an empty block used to turn the CSS placeholder into document text
