@@ -450,8 +450,11 @@
                 // collapsing to a bare indented line.
                 const m = /^([ \t]*)([-*+]|\d+[.)])(\s+)(.*)$/.exec(line);
                 let insert = '\n' + indent;
+                // A task item goes on as a task item, box and all, as in Preview; one whose
+                // box has nothing after it is empty and ends the list (2026-11-22).
+                const task = m ? /^\[[ xX]\]([ \t]+|$)(.*)$/.exec(m[4]) : null;
                 if (m) {
-                    if (!m[4].trim()) {
+                    if (!(task ? task[2] : m[4]).trim()) {
                         // "- " with nothing after it: end the list, and take the empty
                         // marker away rather than leaving a stray bullet behind.
                         e.preventDefault();
@@ -465,7 +468,7 @@
                     const marker = /^\d/.test(m[2])
                         ? (parseInt(m[2], 10) + 1) + m[2].slice(-1)   // 3. -> 4.
                         : m[2];
-                    insert = '\n' + m[1] + marker + m[3];
+                    insert = '\n' + m[1] + marker + m[3] + (task ? '[ ] ' : '');
                 }
                 // A quote or callout line goes on in the quote, and an empty one (">" or
                 // "> ") ends it, as a list does (Ed, 2026-11-21). Not inside a code fence,
@@ -495,6 +498,39 @@
                 e.preventDefault();
                 HistoryManager.beginEdit();
                 sourceEditor.setRangeText(insert, start, end, 'end');
+                resizeSourceEditor();
+                updateStats();
+                HistoryManager.commitEdit();
+            });
+
+            /**
+             * Backspace on a line that holds only a list or quote marker removes the whole
+             * marker, as Preview does (Ed, 2026-11-22). Enter writes "- " or "> " for you;
+             * one Backspace takes it back instead of leaving a lone "-" or ">" behind. Only
+             * when nothing else is on the line and the caret is at its end: everywhere else
+             * Backspace deletes one character, as it does in raw Markdown. Not in a code
+             * fence, where "- " or ">" is code.
+             */
+            sourceEditor.addEventListener('keydown', (e) => {
+                if (e.key !== 'Backspace' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+                if (window.isComposing || e.isComposing) return;
+                const start = sourceEditor.selectionStart;
+                if (start == null || start !== sourceEditor.selectionEnd) return;
+                const full = sourceEditor.value;
+                let ls = start;
+                while (ls > 0 && full.charAt(ls - 1) !== '\n') ls--;
+                let le = start;
+                while (le < full.length && full.charAt(le) !== '\n') le++;
+                if (le !== start) return;                     // text after the caret
+                const line = full.substring(ls, start);
+                const markerOnly = /^[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?|(?:>[ \t]?)*>[ \t]+)$/;
+                if (!markerOnly.test(line)) return;
+                let inFence = false;
+                full.substring(0, ls).split('\n').forEach(function (l) { if (/^\s*(```|~~~)/.test(l)) inFence = !inFence; });
+                if (inFence) return;
+                e.preventDefault();
+                HistoryManager.beginEdit();
+                sourceEditor.setRangeText('', ls, start, 'end');
                 resizeSourceEditor();
                 updateStats();
                 HistoryManager.commitEdit();
