@@ -52,11 +52,12 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
-_Limit 1,500 characters. For the 0.22.9 package, written against 0.22.8 (submitted 2026-11-22). If 0.22.8 was never accepted, add the 0.22.8 text below and stay under the limit._
+_Limit 1,500 characters. For the 0.22.10 package (0.22.9 plus the last bullet), written against 0.22.8 (submitted 2026-11-22). If 0.22.8 was never accepted, add the 0.22.8 text below and stay under the limit._
 
 - Fixed: in a long document, Delete or Backspace on an empty line, or at the start or end of a line, could leave no cursor, so the next key went astray. The cursor now stays where you are.
 - Fixed: text typed with the cursor beside a horizontal rule was not saved. The cursor now steps over a rule line, and nothing typed is lost.
 - Fixed: Delete on an empty line above a table puts the cursor in the table's first cell, and above a picture, on the picture's line.
+- Fixed: a code block or table pasted into a line was flattened into one line. It now keeps its lines.
 
 _The 0.22.8 package text:_
 
