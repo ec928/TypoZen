@@ -3,6 +3,23 @@
 Work agreed but not built, newest decisions first. Defects and product limits live in
 `known-issues.md`; this file is what is still to do.
 
+## Indented code fences show as plain lines in Preview (2026-11-22) — **open, not started**
+
+Preview only takes a fence that starts in column 0 (`splitMarkdownToBlockRaws`, 05-model.js).
+Markdown and Source allow up to three spaces, so a code block inside a list item
+(`- step` then `  ```js`) shows in Preview as one paragraph per code line, and a closing
+fence indented by one to three spaces (`   ```) is missed, so the code block runs on into
+the text after it. Source shows both correctly. **Display only:** the file's text is kept
+exactly (real-files-roundtrip passes on every real file, including one with this shape).
+Formatting such a line differs between the two modes: Heading on the line in Preview makes
+it a heading; Source, which knows it is code, leaves it alone.
+
+Accepting the indent in the split alone (`/^ {0,3}(`{3,})/`) was tried and reverted the same
+day: the renderer, serializer and round-trip all assume column 0 (05-model.js around 490 and
+2365), so the block drew as one inline-code paragraph and real-files-roundtrip failed on six
+files. A fix has to change the code-block path end to end and keep the fence's indent on
+save; it touches Tier 1 (no data loss), so it waits for Ed.
+
 ## Re-opening a file that is open with unsaved edits (2026-11-22) — **built** in 0.22.1
 
 Opening a file that is already open in a tab with unsaved edits (File > Open, Recent, a
