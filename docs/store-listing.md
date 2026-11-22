@@ -52,6 +52,21 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
+_Limit 1,500 characters. For the 0.22.0 package, written against 0.21.5. If 0.21.5 was never accepted, merge in the 0.20.24 text below and stay under the limit._
+
+- Formatting leaves the caret where you expect, the same in Preview and Source, and Undo and Redo put it back in the same place.
+- Paste as Plain Text in the Edit and right-click menus (Ctrl+Shift+V). The menus' Copy, Cut and Paste do exactly what the keys do.
+- Every menu access key is unique; the right-click menu and the Menu key take the keyboard. The Syntax & Shortcuts help is redesigned.
+- Numbered lists renumber themselves when an item stops being numbered or is outdented.
+- In Source, one Backspace removes an empty list or quote marker.
+- Reveal Markdown on Focus (F7) is removed; use Source to edit the Markdown.
+- A book's page count shows "~" while its pictures are still loading.
+- Fixed: typing at the end of a line ending in spaces lost the spaces.
+- Fixed: files with old Mac line breaks were saved as one line.
+- Fixed: saving a read-only file wrote over it. Save now points to Save As.
+
+_The 0.20.24 package text:_
+
 _Limit 1,500 characters. For the 0.20.24 package. Written against the published 0.20.16 package. If 0.20.16 was never accepted, merge this with the 0.20.16 and 0.20.0 text below and stay under the limit._
 
 - Fluent window chrome, rounded corners, and an updated About window. Dialogs follow the theme, and single-line fields are centered. Toolbar layout controls are segments.
@@ -100,7 +115,7 @@ Every item is changed or confirmed before Submit; nothing is left for a second p
 | 1 | Product identity | "TypoZen: ePub & PDF Reader, Markdown Editor" reserved |
 | 2 | Packages | the newest MSIX (0.20.24.0); every other package removed from the submission |
 | 3 | Store listing: Product name | the new name selected |
-| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.20.24 text above (merged with the older text if 0.20.16 was never accepted). Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
+| 4 | Store listing: Description, What's new, Features, Short descriptions, Search terms | this file, as it stands. What's new is the 0.22.0 text above (merged with the 0.20.24 text if 0.21.5 was never accepted). Description, Features, Short descriptions and Search terms were last synced on 2026-09-30 |
 | 5 | Store listing: Screenshots | Ed's six, in the order of the captions, with the captions |
 | 6 | Store listing: artwork | the redrawn 16:9 hero from `dist-storeart\` (no text); Poster and Box art are for games -- remove them if uploaded |
 | 7 | Properties: Category | Books & reference (see Category below) -- confirm, do not assume |

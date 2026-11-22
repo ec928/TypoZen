@@ -3,6 +3,15 @@
 Work agreed but not built, newest decisions first. Defects and product limits live in
 `known-issues.md`; this file is what is still to do.
 
+## Question for Ed: re-opening a file that is open with unsaved edits (2026-11-22) — **not decided**
+
+Opening a file that is already open in a tab with unsaved edits (File > Open, Recent, a
+double-click in Explorer) asks *Reload from disk / Keep edits / Cancel*, even when the file
+on disk has not changed since it was loaded. Nothing is lost (the default is Keep edits), but
+most editors just switch to the tab. The proposal: ask only when the disk copy changed since
+load or the last save (the tab's disk stamp), otherwise switch to the tab. Behaviour change,
+so it waits for Ed. `LoadFileFromPath`, "Dirty tab + disk differs".
+
 ## AI Script Director / Gemini Smart Cast for complex literary dialogue (2026-10-11) — **built** (first released in 0.16.25)
 
 **As built, it differs from the proposal below.** The README section "Smart Cast & Voice

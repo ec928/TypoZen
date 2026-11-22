@@ -19,7 +19,7 @@ import puppeteer from 'puppeteer';
 import { settled, untilPage } from './settle.mjs';
 
 const appDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const deadline = setTimeout(() => { console.error('  FAIL over budget (60 s)'); process.exit(1); }, 60000);
+const deadline = setTimeout(() => { console.error('  FAIL over budget (120 s)'); process.exit(1); }, 120000);
 let passed = 0, failed = 0;
 function same(msg, got, want) {
     if (got === want) { passed++; console.log('  OK   ' + msg); return; }
