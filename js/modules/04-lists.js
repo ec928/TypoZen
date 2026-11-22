@@ -879,8 +879,11 @@
             const trailSp = (/[ \t\u00a0]+$/.exec(pasted) || [''])[0].replace(/\u00a0/g, ' ');
             const p = make(pasted);
             const pNodes = unwrap(Array.from(p.childNodes));
-            if (leadSp && !(p.textContent || '').startsWith(leadSp)) pNodes.unshift(document.createTextNode(leadSp));
-            if (trailSp && !(p.textContent || '').endsWith(trailSp)) pNodes.push(document.createTextNode(trailSp));
+            // Rendered, those spaces are no-break spaces: read them as spaces, or each edge
+            // space was added a second time.
+            const pVis = (p.textContent || '').replace(/ /g, ' ');
+            if (leadSp && !pVis.startsWith(leadSp)) pNodes.unshift(document.createTextNode(leadSp));
+            if (trailSp && !pVis.endsWith(trailSp)) pNodes.push(document.createTextNode(trailSp));
             const pastedVis = pNodes.map(function (n) { return n.textContent || ''; }).join('');
             if (!pastedVis) return null;
             if (endOff > off) {
@@ -917,6 +920,8 @@
             try { md = blockHtmlToMarkdown(el); } catch (eMd) { return null; }
             if (md == null) return null;
             const check = make(String(md));
+            // Strict on purpose: a paste whose spaces render differently goes to the caller's
+            // own join, which keeps a bold paste inside a bold run (paste-inline-browser).
             if ((check.textContent || '') !== vis.slice(0, off) + pastedVis + vis.slice(endOff)) return null;
             return { raw: String(md), addedLength: pastedVis.length };
         }
@@ -975,7 +980,7 @@
             md = String(md);
             if (start > 0) md = md.replace(/^[ \t]*(#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+(?:\[[ xX]?\][ \t]+)?|\d+[.)][ \t]+)/, '');
             const check = make(md);
-            return (check.textContent || '') === want ? md : null;
+            return sameVisibleText(check.textContent, want) ? md : null;
         }
 
         // ---- Deleting across a table or code block edge (0.20.9, Ed: "like normal apps") ----
@@ -1094,6 +1099,18 @@
             return out.join('\n');
         }
 
+        /**
+         * Do two visible texts read the same? Preview draws leading spaces, runs and (since
+         * 0.21.34) trailing spaces as no-break spaces, so a line re-rendered from pieces can
+         * hold U+00A0 where the pieces hold a space, or the other way round. Comparing them
+         * raw failed the check, and the caller fell back to joining plain text: typing over
+         * a selection from "One |two" into the next heading dropped the "## " (2026-11-22).
+         */
+        function sameVisibleText(a, b) {
+            const n = function (s) { return String(s || '').replace(/ /g, ' '); };
+            return n(a) === n(b);
+        }
+
         /** One end of a delete inside a fenced code block: keep the fence, cut its code. */
         function trimFenceAt(raw, off, side) {
             const lines = String(raw).split('\n');
@@ -1198,7 +1215,7 @@
                 try { md0 = blockHtmlToMarkdown(f); } catch (eMd0) { return null; }
                 if (md0 == null) return null;
                 const check0 = make(String(md0));
-                return (check0.textContent || '') === suffix ? String(md0) : null;
+                return sameVisibleText(check0.textContent, suffix) ? String(md0) : null;
             }
 
             // A: keep what is before the caret.
@@ -1248,7 +1265,7 @@
             if (md == null) return null;
             // The words must be exactly what the reader kept; otherwise do not trust the marks.
             const check = make(String(md));
-            if ((check.textContent || '') !== prefix + suffix) return null;
+            if (!sameVisibleText(check.textContent, prefix + suffix)) return null;
             return String(md);
         }
 
