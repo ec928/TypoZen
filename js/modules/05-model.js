@@ -4282,11 +4282,19 @@
                     e.stopPropagation();
                     if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
                     HistoryManager.beginEdit();
+                    const stripMi = (typeof DocumentModel !== 'undefined') ? DocumentModel.modelIndexOfEl(block) : -1;
                     writeBlockRaw(block, curRaw.replace(/^(#{1,6}|>)\s+/, ''));
                     window.isProgrammaticFocus = true;
-                    focusBlock(block);
+                    // The line on the page now (a long document's window can be rebuilt).
+                    const liveStrip = function () {
+                        if (block.isConnected) return block;
+                        const el = (stripMi >= 0 && typeof elementForModelIndex === 'function') ? elementForModelIndex(stripMi) : null;
+                        return el && el.isConnected ? el : null;
+                    };
+                    if (liveStrip()) focusBlock(liveStrip());
                     setTimeout(function () {
-                        try { setCaretAtOffset(block, 0); } catch (err2) {}
+                        const b = liveStrip();
+                        if (b) { try { setCaretAtOffset(b, 0); } catch (err2) {} }
                     }, 0);
                     updateStats();
                     updateOutline();
@@ -4339,20 +4347,121 @@
                         || (editor && editor.querySelector('.block[data-model-index="' + prevIdx + '"]'));
                 }
                 window.isProgrammaticFocus = true;
-                if (focusEl) {
-                    focusBlock(focusEl);
+                // The line as it is on the page NOW: in a long document removing a line can
+                // rebuild the mounted window, and the element held here is then not in the page
+                // -- the caret went into it and was gone, the next letter typed went nowhere
+                // (2026-11-22, as with Delete above). The joined line is model index mi - 1.
+                const liveFocus = function () {
+                    if (focusEl && focusEl.isConnected) return focusEl;
+                    const el = (typeof elementForModelIndex === 'function') ? elementForModelIndex(mi - 1) : null;
+                    return el && el.isConnected ? el : null;
+                };
+                if (liveFocus()) {
+                    focusBlock(liveFocus());
                     // Now, not only on the timeout: focusBlock leaves the caret at the END of
                     // the line, and a second Backspace pressed before the timeout (quick hands,
                     // key repeat) deleted the last letter there instead of the next join.
-                    try { setCaretAtOffset(focusEl, joinAt); } catch (err4) {}
+                    try { setCaretAtOffset(liveFocus(), joinAt); } catch (err4) {}
                     setTimeout(function () {
-                        try { setCaretAtOffset(focusEl, joinAt); } catch (err3) {}
-                        ensureCaretVisible(focusEl);
+                        const f = liveFocus();
+                        if (!f) return;
+                        try { setCaretAtOffset(f, joinAt); } catch (err3) {}
+                        ensureCaretVisible(f);
                     }, 0);
                 }
                 updateStats();
                 updateOutline();
                 HistoryManager.commitEdit();
+            }, true);
+
+            // --- A caret never rests where nothing can be typed (2026-11-22) ---------------
+            //
+            // A rule line ("---", drawn as <hr>) has no place for text, yet the caret could
+            // stop on it -- Down from the line above, a click, Delete on the empty line before
+            // it -- and what was typed there showed beside the rule and was dropped on save.
+            // A table outside its cells, and a picture line with the caret on the block rather
+            // than in its paragraph, drew no caret at all. Ed: "the cursor disappears and the
+            // next delete or user action is disrupted".
+            const isRuleBlock = function (b) {
+                return !!(b && b.classList && b.classList.contains('block') && b.querySelector('hr')
+                    && !String(b.textContent || '').replace(/[\s ​]/g, ''));
+            };
+            /** Put the caret somewhere it shows and can type, at the start (or end) of `block`. */
+            const landCaretInBlock = function (block, atEnd) {
+                if (!block) return false;
+                const sel = window.getSelection();
+                const put = function (node, off) {
+                    const r = document.createRange(); r.setStart(node, off); r.collapse(true);
+                    sel.removeAllRanges(); sel.addRange(r); return true;
+                };
+                const cells = block.querySelectorAll('th, td');
+                if (cells.length) {
+                    const cell = atEnd ? cells[cells.length - 1] : cells[0];
+                    const tw = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+                    const first = tw.nextNode();
+                    if (!first) return put(cell, 0);
+                    if (!atEnd) return put(first, 0);
+                    let last = first; for (let n = tw.nextNode(); n; n = tw.nextNode()) last = n;
+                    return put(last, last.nodeValue.length);
+                }
+                if (isRuleBlock(block)) return false;
+                const imgs = block.querySelectorAll('img');
+                if (imgs.length && !String(block.textContent || '').replace(/[\s ​]/g, '')) {
+                    // A picture line: in its paragraph, beside the picture, so the caret draws.
+                    const img = atEnd ? imgs[imgs.length - 1] : imgs[0];
+                    const r = document.createRange();
+                    if (atEnd) r.setStartAfter(img); else r.setStartBefore(img);
+                    r.collapse(true); sel.removeAllRanges(); sel.addRange(r); return true;
+                }
+                try { setCaretAtOffset(block, atEnd ? (block.textContent || '').length : 0); } catch (eS) { return false; }
+                return true;
+            };
+            /** From a rule line, the caret goes to the next line it can be on (or the one before). */
+            const stepOffRule = function (rule, forward) {
+                const pick = function (dir) {
+                    for (let b = dir ? rule.nextElementSibling : rule.previousElementSibling; b;
+                         b = dir ? b.nextElementSibling : b.previousElementSibling) {
+                        if (!b.classList || !b.classList.contains('block')) continue;
+                        if (!isRuleBlock(b)) return b;
+                    }
+                    return null;
+                };
+                const to = pick(forward) || pick(!forward);
+                if (!to) return false;
+                return landCaretInBlock(to, to === pick(!forward) && !pick(forward) ? true : !forward);
+            };
+            // Which way the caret was travelling: Up / Page Up go back, anything else on. From
+            // the key, not from the last caret position -- a Down pressed straight after a click
+            // arrives before the click's own selectionchange has.
+            let _caretGoingBack = false;
+            editor.addEventListener('keydown', function (e) {
+                if (e.key === 'ArrowUp' || e.key === 'PageUp') _caretGoingBack = true;
+                else if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Delete') _caretGoingBack = e.key === 'ArrowLeft';
+            }, true);
+            editor.addEventListener('mousedown', function () { _caretGoingBack = false; }, true);
+            document.addEventListener('selectionchange', function () {
+                try {
+                    if (state.mode === 'source' || !editor || !editor.isContentEditable) return;
+                    const sel = window.getSelection();
+                    if (!sel || !sel.rangeCount || !sel.isCollapsed || !sel.anchorNode || !editor.contains(sel.anchorNode)) return;
+                    const block = getAncestorBlock(sel.anchorNode);
+                    if (!isRuleBlock(block)) return;
+                    stepOffRule(block, !_caretGoingBack);
+                } catch (eRule) {}
+            });
+            // The safety net: anything typed while the caret is still on a rule line goes on
+            // the next line, never beside the rule where it would be dropped.
+            editor.addEventListener('beforeinput', function onTypeOnRule(e) {
+                try {
+                    if (state.mode === 'source' || !e.inputType || e.inputType.indexOf('insert') !== 0) return;
+                    const sel = window.getSelection();
+                    if (!sel || !sel.rangeCount || !sel.isCollapsed) return;
+                    const block = getAncestorBlock(sel.anchorNode);
+                    if (!isRuleBlock(block)) return;
+                    e.preventDefault();
+                    if (!stepOffRule(block, true)) return;
+                    if (e.inputType === 'insertText' && e.data) document.execCommand('insertText', false, e.data);
+                } catch (eTr) {}
             }, true);
 
             // FUNDAMENTAL, same reason as Enter above: only #editor is contenteditable, so
@@ -4428,13 +4537,35 @@
                 if (nextMounted) removeBlockEl(next);
                 else DocumentModel.removeBlockAt(mi + 1);
                 window.isProgrammaticFocus = true;
-                focusBlock(block);
+                // The line as it is on the page NOW. In a long document only a window of it is
+                // in the page, and removing the next line can rebuild that window: `block` is
+                // then an element no longer in the page, the caret was put inside it, and the
+                // selection was simply gone -- the next letter typed went nowhere (Ed,
+                // 2026-11-22: "the cursor disappears and the next delete or user action is
+                // disrupted", on large documents). The merged line keeps its model index.
+                const live = function () {
+                    if (block.isConnected) return block;
+                    const el = (mi >= 0 && typeof elementForModelIndex === 'function') ? elementForModelIndex(mi) : null;
+                    return el && el.isConnected ? el : null;
+                };
+                try { focusBlock(live() || block); } catch (eF) {}
                 // Now as well as on the timeout: a second Delete pressed before it ran
                 // found the caret at the START of the line and deleted the first letter.
-                try { setCaretAtOffset(block, joinAt); } catch (err2) {}
+                // An empty line that took on a table, a picture or a rule: offset 0 of it is
+                // no text at all, and the caret drew nowhere (landCaretInBlock, above).
+                const placeCaret = function () {
+                    const b = live();
+                    if (!b) return;
+                    if (joinAt === 0 && (b.querySelector('th, td, img') || isRuleBlock(b))) {
+                        if (isRuleBlock(b)) stepOffRule(b, true);
+                        else landCaretInBlock(b, false);
+                    } else setCaretAtOffset(b, joinAt);
+                };
+                try { placeCaret(); } catch (err2) {}
                 setTimeout(function () {
-                    try { setCaretAtOffset(block, joinAt); } catch (err) {}
-                    ensureCaretVisible(block);
+                    try { placeCaret(); } catch (err) {}
+                    const b = live();
+                    if (b) ensureCaretVisible(b);
                 }, 0);
                 updateStats();
                 updateOutline();
