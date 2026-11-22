@@ -11,10 +11,11 @@
  *   RUN_APP_E2E=1 node tests/large-edit-keys-app.mjs     (~40 s, hidden desktop)
  */
 import fs from 'fs';
+import { execFileSync } from 'child_process';
 import { launchApp, profileFile, sleep } from './app-harness.mjs';
 
 if (process.env.RUN_APP_E2E !== '1') { console.log('skipped (set RUN_APP_E2E=1)'); process.exit(0); }
-const deadline = setTimeout(() => { console.error('  FAIL over budget (120 s)'); process.exit(1); }, 120000);
+const deadline = setTimeout(() => { console.error('  FAIL over budget (180 s)'); process.exit(1); }, 180000);
 let passed = 0, failed = 0;
 function ok(c, msg) { if (c) { passed++; console.log('  OK   ' + msg); } else { failed++; console.error('  FAIL ' + msg); } }
 
@@ -71,6 +72,53 @@ try {
             ok(holds(t) && t.split('Z').length - 1 === 1, layout + ', ' + name + ': the next letter lands once, where it should');
         }
     }
+    // Selections past the window, in the real WebView: Ctrl+A then a letter; Shift+Ctrl+End
+    // from the middle then Delete (2026-11-22: the letter was dropped; Delete removed nothing
+    // or one chunk).
+    for (const [layout, cmds] of [['scrolling 1-column', ['view_set:columns:1', 'view_set:scroll:scroll']], ['two pages', ['view_set:columns:2', 'view_set:scroll:pagination']]]) {
+        await reset(cmds);
+        if (await clickLine(1201)) {
+            await page.keyboard.down('Control'); await page.keyboard.press('KeyA'); await page.keyboard.up('Control'); await quiet();
+            await page.keyboard.type('Z'); await quiet();
+            const t = (await page.evaluate(() => getMarkdownContent(false))).replace(/\n+$/, '');
+            ok(t === 'Z', layout + ', Ctrl+A then a letter: the document is that letter (' + t.length + ' characters)');
+        }
+        await reset(cmds);
+        if (await clickLine(2000)) {
+            await page.keyboard.down('Control'); await page.keyboard.down('Shift'); await page.keyboard.press('End'); await page.keyboard.up('Shift'); await page.keyboard.up('Control'); await quiet();
+            await page.keyboard.press('Delete'); await quiet();
+            const t = await page.evaluate(() => getMarkdownContent(false).replace(/\n+$/, ''));
+            ok(t.split('\n').length <= 2003 && t.indexOf('Line 2998') < 0, layout + ', Shift+Ctrl+End then Delete removes the rest of the file (' + t.split('\n').length + ' lines left)');
+        }
+        // Ctrl+End, Enter, a letter: a new last line. Ctrl+Home, a letter: the very start.
+        // (2026-11-22: the caret was lost; the letter went nowhere, or back to the old line.)
+        await reset(cmds);
+        if (await clickLine(2000)) {
+            await page.keyboard.down('Control'); await page.keyboard.press('End'); await page.keyboard.up('Control'); await quiet(); await quiet();
+            await page.keyboard.press('Enter'); await quiet(); await page.keyboard.type('Z'); await quiet();
+            const t = (await page.evaluate(() => getMarkdownContent(false))).replace(/\n+$/, '');
+            ok(t.startsWith(BASE.replace(/\n+$/, '')) && /\n+Z$/.test(t), layout + ', Ctrl+End, Enter, a letter: a new last line (' + JSON.stringify(t.slice(-12)) + ')');
+        }
+        await reset(cmds);
+        if (await clickLine(2000)) {
+            await page.keyboard.down('Control'); await page.keyboard.press('Home'); await page.keyboard.up('Control'); await quiet(); await quiet();
+            await page.keyboard.type('Z'); await quiet();
+            const t = await page.evaluate(() => getMarkdownContent(false));
+            ok(t.startsWith('ZLine 0 of') && t.split('Z').length - 1 === 1, layout + ', Ctrl+Home then a letter: at the very start (' + JSON.stringify(t.slice(0, 12)) + ')');
+        }
+        // Select All, then a real Ctrl+V of what is on the clipboard: the paste is the document.
+        await reset(cmds);
+        if (await clickLine(1201)) {
+            execFileSync('powershell.exe', ['-NoProfile', '-Command', "Set-Clipboard -Value 'PASTED one'"]);
+            await page.keyboard.down('Control'); await page.keyboard.press('KeyA'); await page.keyboard.up('Control'); await quiet();
+            await page.keyboard.down('Control'); await page.keyboard.press('KeyV'); await page.keyboard.up('Control'); await sleep(600); await quiet();
+            const t = (await page.evaluate(() => getMarkdownContent(false))).replace(/\n+$/, '');
+            ok(t === 'PASTED one', layout + ', Select All then Ctrl+V: the document is what was pasted (' + JSON.stringify(t.slice(0, 30)) + ')');
+        }
+    }
+    await reset(['view_set:columns:1', 'view_set:scroll:scroll']);
+    if (await clickLine(1500)) { await page.keyboard.press('End'); await page.keyboard.press('ArrowDown'); await quiet(); await page.keyboard.type('Z'); await quiet(); }
+
     // What is on the page is what is saved: the last case's Z, on disk.
     await page.evaluate(() => postMsg('debug_save')); await sleep(1500);
     const disk = fs.readFileSync(doc, 'utf8').replace(/\r\n/g, '\n');

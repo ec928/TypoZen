@@ -2903,6 +2903,27 @@
         editor.addEventListener('keydown', function (e) {
             if (state.mode === 'source' || e.ctrlKey || e.metaKey || e.altKey) return;
             if (!e.key || e.key.length !== 1 || e.isComposing || e.keyCode === 229) return;
+            // Select All, then a letter: the letter is the document. Delete and Cut read the
+            // whole-document selection from the model (selectionIsWholeEditor); typing did
+            // not, the range ends at a long document's window spacer, no line was found at its
+            // ends, and the browser's own insert put the letter nowhere -- the file was left
+            // as it was (2026-11-22).
+            try {
+                const s0 = window.getSelection();
+                if (s0 && s0.rangeCount && !s0.isCollapsed && typeof selectionIsWholeEditor === 'function'
+                    && selectionIsWholeEditor(s0.getRangeAt(0))) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (typeof replaceWholeDocumentFromModel === 'function') replaceWholeDocumentFromModel(e.key);
+                    const only = editor.querySelector('.block');
+                    if (only) {
+                        try { if (typeof focusEditorNoScroll === 'function') focusEditorNoScroll(); } catch (eFo) {}
+                        try { setCaretAtOffset(only, (only.textContent || '').length); } catch (eCa) {}
+                    }
+                    try { updateStats(); } catch (eSt) {}
+                    return;
+                }
+            } catch (eWhole) {}
             try {
                 let across = typeof rememberedFreezeStandsForSelection === 'function' && rememberedFreezeStandsForSelection();
                 if (!across) {

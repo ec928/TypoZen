@@ -2952,6 +2952,25 @@
             // the insert lands in a leftover block and the lines never rejoin.
             // Keep the delete + insert in a single undo step.
             HistoryManager.beginEdit();
+            // Select All, then paste: the paste is the document. The whole-editor range is not
+            // a cross-line selection removeCrossBlockSelection takes apart, so the paste did
+            // nothing at all, in every document and every version tried back to 0.19.0
+            // (2026-11-22). Empty the document (not an undo step of its own: beginEdit above
+            // holds the file as it was), then paste into its one empty line.
+            try {
+                const s0 = window.getSelection();
+                if (s0 && s0.rangeCount && !s0.isCollapsed && selectionIsWholeEditor(s0.getRangeAt(0))) {
+                    const wasRestoring = HistoryManager.isRestoring;
+                    HistoryManager.isRestoring = true;
+                    try { loadMarkdownContent('', { stickyLine: 1 }); } finally { HistoryManager.isRestoring = wasRestoring; }
+                    try { clearMultiBlockSelFreeze(); } catch (eCl) {}
+                    const only = editor.querySelector('.block');
+                    try { focusEditorNoScroll(); } catch (eFo) {}
+                    if (only) setCaretAtOffset(only, 0);
+                    insertPastedPlainText(text, fromHtml, { skipBeginEdit: true });
+                    return;
+                }
+            } catch (eWhole) {}
             const over = removeCrossBlockSelection({ skipHistory: true });
             if (over) {
                 try { if (!placeCaretAtCut(over)) throw new Error('not placed'); }
@@ -3077,7 +3096,11 @@
                 if (!sel || sel.isCollapsed || !sel.rangeCount || !editor.contains(sel.anchorNode)) return false;
                 const inSel = sel.getRangeAt(0).cloneContents();
                 // Exclude decorative UI icons (e.g. callout alert icons) so selecting across a callout doesn't block typing/paste.
-                return !!(inSel.querySelector && inSel.querySelector('img, svg:not(.tz-alert-icon):not([aria-hidden="true"]), video, audio, iframe, object, embed'));
+                if (!(inSel.querySelector && inSel.querySelector('img, svg:not(.tz-alert-icon):not([aria-hidden="true"]), video, audio, iframe, object, embed'))) return false;
+                // A selected picture is the picture alone. A selection that also holds text --
+                // lines either side of a picture, Select All -- is replaced like any other:
+                // paste over it did nothing at all (2026-11-22), while typing over it worked.
+                return !String(sel.toString() || '').replace(/[\s ​﻿]/g, '');
             } catch (e) {}
             return false;
         }
@@ -4472,6 +4495,82 @@
                     stepOffRule(block, !_caretGoingBack);
                 } catch (eRule) {}
             });
+            // Shift+Ctrl+End / Shift+Ctrl+Home select to the end / start of the FILE. In a long
+            // document only a window of it is in the page, and the browser's own selection stopped
+            // at that window's edge: Delete then removed nothing (scrolling) or the rest of one
+            // chunk (pages), not the rest of the file (2026-11-22). The model points go into the
+            // remembered selection (setRememberedSelection), which Delete, typing, cut and copy read.
+            // Ctrl+End / Ctrl+Home without Shift had the same limit: the browser put the caret at
+            // the window's edge, the view then scrolled, the window was rebuilt and the caret was
+            // gone -- the next letter went back where the caret had been (Ctrl+Home) or nowhere
+            // (Ctrl+End) (2026-11-22). Go to the file's first / last line and put the caret there.
+            editor.addEventListener('keydown', function onCaretToFileEdge(e) {
+                try {
+                    if (state.mode === 'source' || e.shiftKey || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+                    if (e.key !== 'End' && e.key !== 'Home') return;
+                    const windowed = !!DocumentModel.virtEnabled || (typeof pageWindowingActive === 'function' && pageWindowingActive());
+                    if (!windowed || !DocumentModel.blocks.length) return;
+                    const toEnd = e.key === 'End';
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+                    try { clearMultiBlockSelFreeze(); } catch (eCl) {}
+                    const n = DocumentModel.blocks.length;
+                    const target = toEnd ? n - 1 : 0;
+                    try { goToModelBlock(target); } catch (eGo) {}
+                    try { focusEditorNoScroll(); } catch (eFo) {}
+                    // The edge line itself, or the nearest one a caret can rest on (not a rule).
+                    // In pages the chunk holding it is mounted a frame or two later: try again then.
+                    const land = function () {
+                        for (let k = 0; k < 4 && k < n; k++) {
+                            const idx = toEnd ? target - k : target + k;
+                            const el = elementForModelIndex(idx);
+                            if (el && el.isConnected && landCaretInBlock(el, toEnd)) return true;
+                        }
+                        return false;
+                    };
+                    let tries = 0;
+                    const attempt = function () {
+                        if (land() || ++tries > 30) { try { updateStats(); } catch (eSt) {} return; }
+                        requestAnimationFrame(attempt);
+                    };
+                    attempt();
+                } catch (eEdge) {}
+            }, true);
+
+            editor.addEventListener('keydown', function onSelectToFileEdge(e) {
+                try {
+                    if (state.mode === 'source' || !e.shiftKey || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+                    if (e.key !== 'End' && e.key !== 'Home') return;
+                    const windowed = !!DocumentModel.virtEnabled || (typeof pageWindowingActive === 'function' && pageWindowingActive());
+                    if (!windowed || typeof setRememberedSelection !== 'function') return;
+                    const sel = window.getSelection();
+                    if (!sel || !sel.rangeCount || !sel.anchorNode || !editor.contains(sel.anchorNode)) return;
+                    // The anchor: a remembered selection's own, else the live anchor as a model point.
+                    let a = null;
+                    if (typeof _mbSelFreeze !== 'undefined' && _mbSelFreeze && _mbSelFreeze.fromMemory && _mbSelFreeze.anchor
+                        && typeof rememberedFreezeStandsForSelection === 'function' && rememberedFreezeStandsForSelection()) {
+                        a = { index: _mbSelFreeze.anchor.index, offset: _mbSelFreeze.anchor.offset };
+                    } else {
+                        const b = getAncestorBlock(sel.anchorNode);
+                        const idx = b ? DocumentModel.modelIndexOfEl(b) : -1;
+                        if (idx < 0) return;
+                        const pre = document.createRange();
+                        pre.selectNodeContents(b);
+                        pre.setEnd(sel.anchorNode, sel.anchorOffset);
+                        a = { index: idx, offset: pre.toString().length };
+                    }
+                    const last = DocumentModel.blocks.length - 1;
+                    const f = e.key === 'End' ? { index: last, offset: -1 } : { index: 0, offset: 0 };
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+                    // Show the end it went to, as Ctrl+End / Ctrl+Home do; then select.
+                    try { goToModelBlock(f.index); } catch (eGo) {}
+                    setRememberedSelection(a, f);
+                } catch (eEdge) {}
+            }, true);
+
             // The safety net: anything typed while the caret is still on a rule line goes on
             // the next line, never beside the rule where it would be dropped.
             editor.addEventListener('beforeinput', function onTypeOnRule(e) {
