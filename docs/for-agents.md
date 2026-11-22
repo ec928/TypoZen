@@ -191,10 +191,12 @@ $env:RUN_APP_E2E = '1'; .\tests\run-tests.ps1  # + real TypoZen.exe (slow; only 
   and checks what must always hold (Undo gives the file back, nearby lines only, Preview
   and Source agree). `print-every-line-browser` and `export-html-whole-browser` read every
   page of a PDF and the whole exported HTML. Add a case there for a new edit or output.
-- **Not merged yet:** a line's block marker (heading, quote, bullet, task, number) is
-  matched by two different regexes written 7 and 3 times across `04-lists`, `04b-format`
-  and `05-model`, which differ in detail (`>\s*` vs `>\s+`, `[ xX]` vs `[ xX]?`). Same
-  shape as the fences; merge it the same way, proving no real file changes.
+- **A line's block marker: `tzMarkerPrefix` / `TZ_MARKER_PREFIX_RE` (the marker in front of
+  a line's text, to step over) and `tzStartsWithMarker` / `TZ_STARTS_WITH_MARKER_RE` (does a
+  line open with a marker and its space), in `01-core.js`.** They were copied 7 and 3 times.
+  They still differ on purpose (`>\s*` vs `>\s+`, `[ xX]` vs `[ xX]?`, `1.hello`); unify
+  them only with a test that shows one is wrong. Other matchers that also count tables,
+  fences, `1)` or callout headers answer other questions and stay beside their reasons.
 
 ## Auditing for dead or duplicated code
 
