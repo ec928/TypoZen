@@ -3605,6 +3605,7 @@ namespace TypoZen
         {
             string body = (tab.Content ?? "").Replace("\r\n", "\n");
             if (tab.LineEnding == "\r\n") body = body.Replace("\n", "\r\n");
+            else if (tab.LineEnding == "\r") body = body.Replace("\n", "\r");
             return body + (tab.TrailingNewlines ?? "");
         }
 
@@ -3833,6 +3834,21 @@ namespace TypoZen
                 // Re-find saver index after removal
                 int self = _tabs.IndexOf(tab);
                 if (self >= 0) _activeTabIndex = self;
+            }
+
+            // A read-only file stays read-only. The atomic write used to swap it aside and
+            // put the new text in its place, which saved anyway, dropped the attribute and
+            // left the old copy beside it as name.old (2026-11-22).
+            if (IsReadOnlyFile(path))
+            {
+                if (!_e2eMode)
+                    ThemedPrompt.Show(
+                        this,
+                        Path.GetFileName(path) + " is read-only." +
+                        Environment.NewLine + Environment.NewLine +
+                        "Use Save As to save your changes under another name.",
+                        "Read-only file", MessageBoxButton.OK, MessageBoxImage.Information);
+                return false;
             }
 
             string outText = ComposeFileText(tab);
@@ -4741,7 +4757,7 @@ namespace TypoZen
             tab.TrailingNewlines = DetectTrailingNewlines(content);
             // No prompt here (session restore, background loads): the file was already opened
             // once through LoadFileFromPath, which asked. NULs still cannot reach the page.
-            tab.Content = StripNulChars(content).Replace("\r\n", "\n").TrimEnd('\n');
+            tab.Content = ToEditorText(StripNulChars(content)).TrimEnd('\n');
             tab.SourceEncoding = enc;
             tab.IsDirty = false;
             StampTabDisk(tab, tab.FilePath, content);
@@ -5059,7 +5075,7 @@ namespace TypoZen
                     encodingName = tab.SourceEncoding ?? "UTF-8";
                 tab.LineEnding = DetectLineEnding(diskText);
                 tab.TrailingNewlines = DetectTrailingNewlines(diskText);
-                tab.Content = StripNulChars(diskText ?? "").Replace("\r\n", "\n").TrimEnd('\n');
+                tab.Content = ToEditorText(StripNulChars(diskText ?? "")).TrimEnd('\n');
                 tab.SourceEncoding = encodingName;
                 tab.IsDirty = false;
                 tab.Kind = DocKind.Engine;
@@ -5248,7 +5264,7 @@ namespace TypoZen
                     sb.AppendLine("path=" + path);
                     sb.AppendLine("dirty=" + (dirty ? "1" : "0"));
                     sb.AppendLine("kind=" + DocKindToken(tab));
-                    sb.AppendLine("le=" + ((tab.LineEnding == "\r\n") ? "crlf" : "lf"));
+                    sb.AppendLine("le=" + ((tab.LineEnding == "\r\n") ? "crlf" : (tab.LineEnding == "\r") ? "cr" : "lf"));
                     sb.AppendLine("trail=" + EncodeTrailToken(tab.TrailingNewlines ?? ""));
                     sb.AppendLine("resume=" + tab.ResumeBlock);
                     sb.AppendLine("cols=" + tab.Columns);
@@ -5489,7 +5505,7 @@ namespace TypoZen
                     {
                         Id = _nextTabId++,
                         FilePath = string.IsNullOrWhiteSpace(tabPath) ? null : tabPath,
-                        LineEnding = (le == "crlf") ? "\r\n" : "\n",
+                        LineEnding = (le == "crlf") ? "\r\n" : (le == "cr") ? "\r" : "\n",
                         TrailingNewlines = DecodeTrailToken(trailTok),
                         IsDirty = dirty,
                         ResumeBlock = resumeBlock,
@@ -13027,6 +13043,9 @@ namespace TypoZen
             // file it is meant to be protecting. A failed pull means try again later.
             if (!SyncActiveTabFromEditor()) { ArmAutosave(); return; }
             if (!tab.IsDirty) return;
+            // Saving refuses a read-only file with a message; autosave must not raise it
+            // every few seconds. Ctrl+S still explains.
+            if (IsReadOnlyFile(tab.FilePath)) return;
             string ignored, ignoredEnc;
             if (EngineDiskTextChanged(tab, tab.FilePath, out ignored, out ignoredEnc))
             {
@@ -17147,7 +17166,29 @@ namespace TypoZen
                 if (i > 0 && content[i - 1] == '\r') crlf++;
                 else lfOnly++;
             }
+            // Classic Mac files break lines with a lone CR. The editor read them as one line
+            // with the breaks drawn as spaces, and saving wrote the spaces (2026-11-22).
+            if (crlf == 0 && lfOnly == 0 && content.IndexOf('\r') >= 0) return "\r";
             return crlf > lfOnly ? "\r\n" : "\n";
+        }
+
+        private static bool IsReadOnlyFile(string path)
+        {
+            try
+            {
+                return !string.IsNullOrEmpty(path) && File.Exists(path)
+                    && (File.GetAttributes(path) & FileAttributes.ReadOnly) != 0;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>File text as the editor holds it: every line break one LF. A lone CR
+        /// is a line break too (classic Mac files); ComposeFileText puts back the style
+        /// DetectLineEnding found.</summary>
+        private static string ToEditorText(string raw)
+        {
+            if (string.IsNullOrEmpty(raw)) return raw ?? "";
+            return raw.Replace("\r\n", "\n").Replace('\r', '\n');
         }
 
         /// <summary>The exact run of newline characters a file ends with (often "\n").</summary>
@@ -17254,7 +17295,7 @@ namespace TypoZen
                 }
                 string lineEnding = DetectLineEnding(raw);
                 string trailing = DetectTrailingNewlines(raw);
-                string content = raw.Replace("\r\n", "\n").TrimEnd('\n');
+                string content = ToEditorText(raw).TrimEnd('\n');
                 path = Path.GetFullPath(path);
                 // If already open in a tab, switch to it.
                 for (int i = 0; i < _tabs.Count; i++)
