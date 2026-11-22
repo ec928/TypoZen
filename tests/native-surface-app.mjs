@@ -222,7 +222,8 @@ try {
         };
         // Bookmark Gutter Hover left the View menu in 0.7.4 (2bf8356): the gutter click it
         // previewed was gone, so there is nothing for it to grey.
-        const mustBeOff = ['Sidebar', 'Focus Mode', 'Typewriter', 'Reveal Markdown',
+        // Reveal Markdown left the View menu in 0.21.30 (F7 removed).
+        const mustBeOff = ['Sidebar', 'Focus Mode', 'Typewriter',
                            'Font Appearance', 'Spacing', 'Justified'];
         const mustBeOn = ['Scrubber', 'Status Bar', 'Fullscreen', 'Reset View']
             .concat(nat.zooms === false ? [] : ['Zoom']);

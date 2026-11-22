@@ -18,6 +18,14 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const ext = path.join(process.env.LOCALAPPDATA, 'TypoZen_Cache_Portable', 'extensions', 'QwenTTS');
 export const NARRATOR = 'http://127.0.0.1:8765';
 
+// The Qwen narrator is optional and not installed on every machine (Ed's own PC has no venv,
+// by choice, 2026-10-14). Without it these suites crashed on an unhandled spawn error and
+// failed the app tier. Say so and stop before the suite starts anything.
+if (!fs.existsSync(path.join(ext, 'venv', 'Scripts', 'python.exe'))) {
+    console.log('skipped: the Qwen narrator is not installed (' + path.join(ext, 'venv') + ')');
+    process.exit(0);
+}
+
 async function health() {
     try { return await (await fetch(NARRATOR + '/health')).json(); } catch (e) { return null; }
 }

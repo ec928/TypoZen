@@ -34,7 +34,10 @@ const inView = (app) => evalPatiently(app, () => {
     const v = ed.getBoundingClientRect();
     const out = [];
     for (const b of ed.querySelectorAll('.block')) {
-        if (Array.from(b.getClientRects()).some(r => r.width > 0 && r.height > 0 && r.right > v.left && r.left < v.right && r.bottom > v.top && r.top < v.bottom)) out.push(b.innerText || '');
+        // A picture page is a page, not a blank one: Matter's glossary is a run of full-page
+        // pictures, and two Page Ups from its end land in it (2026-11-22).
+        if (Array.from(b.getClientRects()).some(r => r.width > 0 && r.height > 0 && r.right > v.left && r.left < v.right && r.bottom > v.top && r.top < v.bottom))
+            out.push((b.innerText || '').trim() || (b.querySelector('img, svg image') ? '[picture]' : ''));
     }
     return out.join('\n').trim();
 });
@@ -75,7 +78,7 @@ for (const book of books) {
             await app.page.keyboard.press('PageUp');
             await settledApp(app, 3000);
             const b = await inView(app);
-            check(b.length > 0, `${book}: ${name}: text in view after turning pages`);
+            check(b.length > 0, `${book}: ${name}: text or a picture in view after turning pages`);
             check(a !== b, `${book}: ${name}: PageUp moved the view`);
         }
         const blank = samples.filter(n => n < 20).length;

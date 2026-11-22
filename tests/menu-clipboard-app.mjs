@@ -47,7 +47,6 @@ Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type -Name Win -Namespace Native -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);'
 $p = Get-Process TypoZen | Select-Object -First 1
 if (-not $p) { throw "TypoZen not running" }
-if ($p.MainWindowHandle -ne 0) { [Native.Win]::SetForegroundWindow($p.MainWindowHandle) | Out-Null }
 $AE = [System.Windows.Automation.AutomationElement]; $TS = [System.Windows.Automation.TreeScope]
 $parts = @(${partsLiteral})
 function FindVisible($name) {
@@ -66,9 +65,14 @@ function FindVisible($name) {
 for ($idx = 0; $idx -lt $parts.Count; $idx++) {
   $nm = $parts[$idx]
   $hit = $null
-  for ($try = 0; $try -lt 8 -and -not $hit; $try++) {
+  # Bring the window forward only for a top menu that is not showing yet. Activating the
+  # main window closes an open right-click menu, so doing it first threw away the menu the
+  # test had just opened: "Visible MenuItem not found: Copy" (2026-11-22).
+  $hit = FindVisible $nm
+  if (-not $hit -and $idx -eq 0 -and $p.MainWindowHandle -ne 0) { [Native.Win]::SetForegroundWindow($p.MainWindowHandle) | Out-Null }
+  for ($try = 0; $try -lt 25 -and -not $hit; $try++) {
+    Start-Sleep -Milliseconds 120
     $hit = FindVisible $nm
-    if (-not $hit) { Start-Sleep -Milliseconds 120 }
   }
   if (-not $hit) { throw "Visible MenuItem not found: $nm" }
   if ($idx -lt $parts.Count - 1) {

@@ -34,6 +34,10 @@ const realModels = path.join(process.env.LOCALAPPDATA, 'TypoZen_Cache_Portable',
                              'extensions', 'QwenTTS', 'models');
 const python = path.join(process.env.LOCALAPPDATA, 'TypoZen_Cache_Portable',
                          'extensions', 'QwenTTS', 'venv', 'Scripts', 'python.exe');
+if (!fs.existsSync(python)) {
+    console.log('skipped: the Qwen narrator is not installed (' + path.dirname(path.dirname(python)) + ')');
+    process.exit(0);
+}
 const profile = profileDir;
 const narrCache = path.join(profile, 'extensions', 'QwenTTS', 'narration');
 fs.mkdirSync(narrCache, { recursive: true });
