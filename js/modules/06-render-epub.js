@@ -2854,7 +2854,12 @@
             // (Ed, 2026-09-30). Drawn as no-break spaces they show, as in Notepad, and the
             // serializer (keepTypedSpaces) keeps them. The last space of a run stays an
             // ordinary one so the line can still wrap there.
+            // Spaces at the END of a line too, every one of them: there is no wrap to keep
+            // after the last word, and an ordinary space there is one the browser treats as
+            // nothing -- typing next to it deleted it, so "fix. " + Q saved "fix.Q", and a
+            // Markdown line break ("virt.  ") lost a space (2026-11-22).
             res = res.replace(/^ +/, function (m) { return '&nbsp;'.repeat(m.length); })
+                .replace(/ +$/, function (m) { return '&nbsp;'.repeat(m.length); })
                 .replace(/ {2,}/g, function (m) { return '&nbsp;'.repeat(m.length - 1) + ' '; });
 
             // 3. Images BEFORE links: ![alt](src) also matches the link pattern, and the
