@@ -831,7 +831,16 @@
             // The model is the document. editor.innerHTML is a window under
             // virtualisation or page windowing — the same projection Print refuses
             // and Copy already answers from DocumentModel.
-            try { if (typeof DocumentModel !== 'undefined') DocumentModel.syncMountedToModel(); } catch (eS) {}
+            // In Source the text is the Source editor's, and the model catches up only when it
+            // is read for a save or a switch to Preview: an export from Source left out
+            // everything typed there since (2026-11-22). Read it the way Save does.
+            if (state.mode === 'source' && typeof sourceEditor !== 'undefined' && sourceEditor) {
+                try { DocumentModel.fromMarkdown(sourceEditor.value); } catch (eSrc) {
+                    try { window.tzLogException('export from source', eSrc); } catch (eL) {}
+                }
+            } else {
+                try { if (typeof DocumentModel !== 'undefined') DocumentModel.syncMountedToModel(); } catch (eS) {}
+            }
             const holder = document.createElement('div');
             const blocks = (typeof DocumentModel !== 'undefined' && DocumentModel.blocks)
                 ? DocumentModel.blocks : [];
