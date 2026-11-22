@@ -47,17 +47,20 @@ async function main() {
     if (!fs.existsSync(EXE)) { console.log('No TypoZen.exe - build first.'); process.exit(2); }
 
     console.log('profile: ' + profile);
-    const child = spawn(EXE, ['--debug'], {
-        cwd: appDir, stdio: 'ignore',
-        env: Object.assign({}, process.env, { TYPOZEN_PROFILE_DIR: profile })
-    });
+    // On a hidden desktop, as the harness's suites are: nothing here needs a window, and
+    // one appearing takes the focus from whoever is at the machine. TYPOZEN_HIDDEN_DESKTOP=0
+    // shows it.
+    const child = process.env.TYPOZEN_HIDDEN_DESKTOP === '0'
+        ? spawn(EXE, ['--debug'], { cwd: appDir, stdio: 'ignore', env: Object.assign({}, process.env, { TYPOZEN_PROFILE_DIR: profile }) })
+        : (await import('./app-harness.mjs')).spawnOnHiddenDesktop(['--debug'], { TYPOZEN_PROFILE_DIR: profile }, EXE);
 
     let browser = null;
     for (let i = 0; i < 90 && !browser; i++) {
         try { browser = await puppeteer.connect({ browserURL: 'http://127.0.0.1:' + PORT, defaultViewport: null }); }
         catch (e) { await sleep(500); }
     }
-    if (!browser) { console.log('Could not attach to the app.'); try { child.kill(); } catch (e) {} process.exit(2); }
+    // By pid: a hidden-desktop launch's kill() is a no-op, and the app was left running.
+    if (!browser) { console.log('Could not attach to the app.'); try { execSync('taskkill /PID ' + child.pid + ' /T /F', { stdio: 'ignore' }); } catch (e) {} process.exit(2); }
 
     const pages = await browser.pages();
     const page = pages.find(p => p.url().includes('localapp')) || pages[0];
@@ -149,6 +152,7 @@ async function main() {
                 });
             });
             check(answer !== null, 'the host answers a lookup');
+            if (process.env.SHOW_LOOKUP) console.log('        lookup answer: ' + JSON.stringify(answer && answer.map(s => String(s).slice(0, 80))));
         }
 
         check(remote.length === 0, 'nothing left the machine', remote.slice(0, 3).join(' '));
