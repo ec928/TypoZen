@@ -52,6 +52,13 @@ Free, open-source, and yours to keep.
 
 ## What's new in this version
 
+_Limit 1,500 characters. For the 0.22.12 package, written against 0.22.11 (submitted 2026-11-22). If 0.22.11 was never accepted, add the 0.22.11 text below and stay under the limit._
+
+- Fixed: after Find, pressing Esc could leave the keyboard nowhere, so the next letters typed were lost (always in Source, sometimes in two-column or two-page view). Esc now returns you to the text with the match selected.
+- Fixed: Undo of an edit made in Source, after switching to Preview, put the cursor past the change; in a long document the next letter went into the next paragraph.
+
+_The 0.22.11 package text:_
+
 _Limit 1,500 characters. For the 0.22.11 package (0.22.9, 0.22.10 and 0.22.11 together), written against 0.22.8 (submitted 2026-11-22). If 0.22.8 was never accepted, add the 0.22.8 text below and stay under the limit._
 
 - Fixed: in a long document, Delete or Backspace on an empty line, or at the start or end of a line, could leave no cursor, so the next key went astray. The cursor now stays where you are.
