@@ -19,7 +19,7 @@ import puppeteer from 'puppeteer';
 import { settled, untilPage } from './settle.mjs';
 
 const appDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const deadline = setTimeout(() => { console.error('  FAIL over budget (40 s)'); process.exit(1); }, 40000);
+const deadline = setTimeout(() => { console.error('  FAIL over budget (60 s)'); process.exit(1); }, 60000);
 let passed = 0, failed = 0;
 function same(msg, got, want) {
     if (got === want) { passed++; console.log('  OK   ' + msg); return; }
@@ -250,17 +250,25 @@ try {
     const settleQuick = async () => {
         await page.evaluate(() => {
             window.__tzTick = false;
-            setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => { window.__tzTick = true; })), 25);
+            // Then idle: under parallel load the page's own short timers fire late, and a
+            // fixed wait let different checks fail on different runs (2026-11-22).
+            setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() =>
+                requestIdleCallback(() => { window.__tzTick = true; }, { timeout: 300 }))), 25);
         });
         await untilPage(page, () => window.__tzTick === true, 3000);
     };
     const loadQuick = async (md, ext, mode) => {
-        await page.evaluate((m, x, mo) => {
+        const switched = await page.evaluate((m, x, mo) => {
             setSourceDocExt(x);
             loadMarkdownContent(m);
-            if (state.mode !== mo) handleCommand('view_set:mode:' + mo);
+            if (state.mode === mo) return false;
+            handleCommand('view_set:mode:' + mo);
+            return true;
         }, md, ext || 'md', mode || 'wysiwyg');
         await settleQuick();
+        // A mode switch hands focus to the editor on a timer. Under parallel load it landed
+        // after the next check had set its selection, and moved it (flaky, 2026-11-22).
+        if (switched) await new Promise(r => setTimeout(r, 200));
     };
     const undoSnap = () => page.evaluate(() => {
         const s = getSelection();
@@ -845,8 +853,12 @@ try {
     same('Reader blurred Copy recovers "single"', rdrCopy.text, 'single');
 
     await loadQuick('Alpha beta', 'md', 'wysiwyg');
+    // The mode switch hands focus back to the editor on a timer, which under load landed
+    // after this setup and cleared the remembered Find input. Let focus settle first.
+    await page.evaluate(() => openFindBar());
+    await untilPage(page, () => document.activeElement && document.activeElement.id === 'findInput', 2000).catch(() => {});
+    await new Promise(r => setTimeout(r, 200));
     await page.evaluate(() => {
-        openFindBar();
         const i = document.getElementById('findInput');
         i.focus(); i.value = 'needle'; i.setSelectionRange(0, 6);
         i.blur();
