@@ -2525,6 +2525,22 @@
                 return;
             }
 
+            // One code block or table pasted into a line is still a block of its own: the text
+            // before the caret stays above it and the text after goes below, as for any paste
+            // of several lines. It was glued onto the line instead, no longer started with its
+            // fence, and was drawn and saved as one flat line -- "after```js let x = 1; ```",
+            // its line breaks and blank lines gone (present before 0.22.1; found 2026-11-22).
+            let pasteBlockTakesLine = false;
+            if (blockTexts.length === 1 && blockTexts[0].indexOf('\n') >= 0
+                && active && active.classList && active.classList.contains('block')) {
+                let before = 0;
+                try { const o = getPlainOffsetsInBlock(active); if (o && o.start != null) before = o.start | 0; } catch (eO) {}
+                // Text before the caret: it stays its own line above the block. None: the block
+                // takes the line, and nothing empty is left above it.
+                blockTexts.unshift('');
+                if (!before) pasteBlockTakesLine = true;
+            }
+
             // Several lines pasted inside a line split it, as in any editor: the text after the
             // caret moves to the end of the last pasted line. It used to stay where it was, so
             // a whole line pasted at the start of another ran into it ("unoalpha"), and one
@@ -2633,8 +2649,15 @@
                         blockTexts[k] = pasteLineMarker.at(k, k === blockTexts.length - 1 && !!cutTail) + line;
                     }
                 }
-                const joined = typeof concatMarkdown === 'function'
+                let joined = typeof concatMarkdown === 'function'
                     ? concatMarkdown(String(headMd || ''), blockTexts[0]) : String(headMd || '') + blockTexts[0];
+                // A pasted code block or table with nothing before it on the line takes the line
+                // (above): no empty line is left over it.
+                let firstNew = 1;
+                if (pasteBlockTakesLine && !String(joined).trim() && blockTexts.length > 1) {
+                    joined = blockTexts[1];
+                    firstNew = 2;
+                }
                 active.setAttribute('data-raw', joined);
                 renderBlockPreview(active, joined);
                 try {
@@ -2650,7 +2673,7 @@
                 // the element does not, so re-find it each time.
                 let currentBlock = active;
                 let lastIdx = -1;
-                for (let i = 1; i < blockTexts.length; i++) {
+                for (let i = firstNew; i < blockTexts.length; i++) {
                     const newBlock = createBlock(blockTexts[i], currentBlock);
                     lastIdx = DocumentModel.modelIndexOfEl(newBlock);
                     currentBlock = editor.contains(newBlock)
