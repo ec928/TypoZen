@@ -8,6 +8,7 @@
 // Cast: Tom (box "gruff"), Anna ("bright"), Jill ("calm"); Mara has no voice. Narrator box "measured". Emotion cues on.
 // Each piece is [voice, told]; told is what the narrator process ends up with ("x | cue: y" when a cue is wrapped).
 import fs from 'fs';
+import './shared-rules.mjs';   // the page's shared rules (tzFence*, block markers) for the extracted functions
 const src = fs.readFileSync(new URL('../js/modules/09-speech.js', import.meta.url), 'utf8');
 const start = src.indexOf('const NARRATION_PIECE_CAP'), at = src.indexOf('function narrationBatches');
 let i = src.indexOf('{', at), d = 0, end = -1;

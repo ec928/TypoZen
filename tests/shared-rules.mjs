@@ -25,6 +25,16 @@ function extract(name) {
     throw new Error('shared-rules: ' + name + ' is not closed');
 }
 
-export const SHARED_RULES = ['tzFenceOpen', 'tzFenceClose', 'tzFenceRaw', 'tzFenceRawClosed', 'tzFenceLineStates', 'tzFenceAt'];
-const made = new Function(SHARED_RULES.map(extract).join('\n') + '\nreturn { ' + SHARED_RULES.join(', ') + ' };')();
-for (const n of SHARED_RULES) globalThis[n] = made[n];
+// The constants the rules are made of, one line each in 01-core.js.
+function extractConst(name) {
+    const m = new RegExp('const ' + name + ' = [^\\n]*;').exec(core);
+    if (!m) throw new Error('shared-rules: const ' + name + ' is not in 01-core.js');
+    return m[0];
+}
+export const SHARED_CONSTS = ['TZ_MARKER_PREFIX_RE', 'TZ_STARTS_WITH_MARKER_RE'];
+export const SHARED_RULES = ['tzFenceOpen', 'tzFenceClose', 'tzFenceRaw', 'tzFenceRawClosed', 'tzFenceLineStates', 'tzFenceAt',
+    'tzMarkerPrefix', 'tzStartsWithMarker'];
+const all = SHARED_CONSTS.concat(SHARED_RULES);
+const made = new Function(SHARED_CONSTS.map(extractConst).join('\n') + '\n' + SHARED_RULES.map(extract).join('\n')
+    + '\nreturn { ' + all.join(', ') + ' };')();
+for (const n of all) globalThis[n] = made[n];

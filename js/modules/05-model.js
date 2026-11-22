@@ -2443,7 +2443,7 @@
                 // that has a marker of its own, the pasted one is dropped. Cutting the first
                 // word of "- [ ] one two" and pasting it back gave "- [ ] - [ ] one two".
                 try {
-                    const mkRe = /^[ \t]*(#{1,6}\s+|>\s+|[-*+]\s+(?:\[[ xX]?\]\s+)?|\d+\.\s+)/;
+                    const mkRe = TZ_STARTS_WITH_MARKER_RE;
                     const lineRaw = active && active.getAttribute ? (active.getAttribute('data-raw') || '') : '';
                     if (startOff === 0 && sel && sel.isCollapsed && lineRaw.indexOf('\n') < 0
                         && mkRe.test(lineRaw) && mkRe.test(blockTexts[0])) {
@@ -2559,7 +2559,7 @@
                     try {
                         const lp = String(blockTexts[blockTexts.length - 1] || '');
                         lastHasMarker = !(tzFenceRaw(lp) || /^\s*\|/.test(lp))
-                            && /^[ \t]*(#{1,6}\s+|>\s+|[-*+]\s+(?:\[[ xX]?\]\s+)?|\d+\.\s+)/.test(lp);
+                            && tzStartsWithMarker(lp);
                     } catch (eLm) {}
                     const lastPasted = String(blockTexts[blockTexts.length - 1] || '');
                     if (lastHasMarker) {

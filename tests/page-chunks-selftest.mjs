@@ -19,6 +19,7 @@
  *   node tests/page-chunks-selftest.mjs
  */
 import { readEngineSource } from './engine-source.mjs';
+import './shared-rules.mjs';   // the page's shared rules (tzFence*, block markers) for the extracted functions
 
 const src = readEngineSource();
 

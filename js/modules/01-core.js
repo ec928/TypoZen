@@ -118,6 +118,30 @@
             return !!st[st.length - 1];
         }
 
+        // --- A LINE'S BLOCK MARKER: two questions, each kept once ---------------------------
+        //
+        // Both were written out in full, seven times and three times across 04-lists,
+        // 04b-format and 05-model (2026-11-22). They are not the same question, and they
+        // differ on purpose until a test shows otherwise:
+        //  - tzMarkerPrefix: the marker in front of a line's text, to step over when counting
+        //    where the text starts -- ">" with or without a space, "1." even with no space
+        //    ("1.hello" is a list line, as written), a task box only with its space or x.
+        //  - tzStartsWithMarker: does a line of pasted or joined text open with a marker that
+        //    makes it its own kind of line -- each marker with its space after it.
+        // Other matchers (tables and fences counted too, "1)" too, callout headers repeated)
+        // answer different questions again and stay where they are, beside their reasons.
+        const TZ_MARKER_PREFIX_RE = /^(?:#{1,6}\s+|>\s*|[ \t]*(?:[-*+]\s+(?:\[[ xX]\]\s?)?|\d+\.(?!\d)\s*))/;
+        const TZ_STARTS_WITH_MARKER_RE = /^[ \t]*(#{1,6}\s+|>\s+|[-*+]\s+(?:\[[ xX]?\]\s+)?|\d+\.\s+)/;
+        /** The block marker before a line's text ('' when there is none). */
+        function tzMarkerPrefix(raw) {
+            const m = TZ_MARKER_PREFIX_RE.exec(String(raw == null ? '' : raw));
+            return m ? m[0] : '';
+        }
+        /** Does this line open with a heading, quote, list or task marker and its space? */
+        function tzStartsWithMarker(line) {
+            return TZ_STARTS_WITH_MARKER_RE.test(String(line == null ? '' : line));
+        }
+
         /**
          * Generated empty-editor hint, never authored. innerText includes ::before, so
          * a flush of an empty block used to turn the CSS placeholder into document text

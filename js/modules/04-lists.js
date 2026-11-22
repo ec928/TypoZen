@@ -2815,7 +2815,7 @@
             const fz = (typeof _mbSelFreeze !== 'undefined' && _mbSelFreeze
                 && _mbSelFreeze.fromIdx === first && _mbSelFreeze.toIdx === last) ? _mbSelFreeze : null;
             const norm = function (s) { return String(s == null ? '' : s).replace(/[​﻿]/g, '').replace(/ /g, ' '); };
-            const prefixRe = /^(?:#{1,6}\s+|>\s*|[ \t]*(?:[-*+]\s+(?:\[[ xX]\]\s?)?|\d+\.(?!\d)\s*))/;
+            const prefixRe = TZ_MARKER_PREFIX_RE;
             const lines = [];
             for (let k = 0; k < keys.length; k++) {
                 const i = keys[k];

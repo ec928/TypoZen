@@ -6,6 +6,7 @@
  *   node tests/narration-selection-selftest.mjs
  */
 import fs from 'fs';
+import './shared-rules.mjs';   // the page's shared rules (tzFence*, block markers) for the extracted functions
 const src = fs.readFileSync(process.argv[2] || new URL('../js/modules/09-speech.js', import.meta.url), 'utf8');
 const body = name => { const a = src.indexOf(name); let i = src.indexOf('{', a), d = 0;
   for (; i < src.length; i++) { if (src[i] === '{') d++; else if (src[i] === '}' && --d === 0) return src.slice(a, i + 1); } };

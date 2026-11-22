@@ -376,7 +376,7 @@
             if (plainStart > plainEnd) {
                 const t = plainStart; plainStart = plainEnd; plainEnd = t;
             }
-            const pref = raw.match(/^(?:#{1,6}\s+|>\s*|[ \t]*(?:[-*+]\s+(?:\[[ xX]\]\s?)?|\d+\.(?!\d)\s*))/);
+            const pref = raw.match(TZ_MARKER_PREFIX_RE);
             const prefix = pref ? pref[0] : '';
             let body = raw.slice(prefix.length);
             let suffix = '';
@@ -825,7 +825,7 @@
                     // What is selected, not the whole of the first and last lines (Ed, 2026-11-14),
                     // by Preview's own rule (inlineMarksForSelectedLines), so the two views agree.
                     // The selection's ends go in as the plain text before and after it.
-                    const prefRe = /^(?:#{1,6}\s+|>\s*|[ \t]*(?:[-*+]\s+(?:\[[ xX]\]\s?)?|\d+\.(?!\d)\s*))/;
+                    const prefRe = TZ_MARKER_PREFIX_RE;
                     const bodyOf = function (raw) {
                         const pre = (raw.match(prefRe) || [''])[0];
                         let body = raw.slice(pre.length);
@@ -975,7 +975,7 @@
                     const line = full.slice(lineStart, lineEnd);
                     // These are positions in the raw line, and the model counts visible text:
                     // map raw indices using plainRangeToRawOffsets so literal * / ~ / _ count accurately.
-                    const prefMatch = line.match(/^(?:#{1,6}\s+|>\s*|[ \t]*(?:[-*+]\s+(?:\[[ xX]\]\s?)?|\d+\.(?!\d)\s*))/);
+                    const prefMatch = line.match(TZ_MARKER_PREFIX_RE);
                     const prefixLen = prefMatch ? prefMatch[0].length : 0;
                     let lineBody = line.slice(prefixLen);
                     if (prefMatch && /^#/.test(prefMatch[0])) {
@@ -994,7 +994,7 @@
                     const pEnd = plainAt(end - lineStart);
                     const rawNext = applyInlineFormatToRaw(line, pStart, pEnd, type, { refuseIfLossy: true });
                     if (rawNext != null) {
-                        const np = (rawNext.match(/^(?:#{1,6}\s+|>\s*|[ \t]*(?:[-*+]\s+(?:\[[ xX]\]\s?)?|\d+\.(?!\d)\s*))/) || [''])[0];
+                        const np = (rawNext.match(TZ_MARKER_PREFIX_RE) || [''])[0];
                         let nextBody = rawNext.slice(np.length);
                         if (np && /^#/.test(np)) {
                             const cm2 = nextBody.match(/\s+#+\s*$/);
@@ -1155,7 +1155,7 @@
                 // checked way, or leave the line as it was.
                 if (prevRaw.indexOf('\n') < 0 && typeof markRangeInLine === 'function') {
                     try {
-                        const preRe = /^[ \t]*(#{1,6}\s+|>\s+|[-*+]\s+(?:\[[ xX]?\]\s+)?|\d+\.\s+)/;
+                        const preRe = TZ_STARTS_WITH_MARKER_RE;
                         const words = function (raw) {
                             const p = (String(raw).match(preRe) || [''])[0];
                             return p + '\n' + plainAndMarksFromMarkdown(String(raw).slice(p.length)).plain.replace(/\s+/g, ' ').trim();
@@ -1225,7 +1225,7 @@
 
             const stripInlineAffixes = function (r) {
                 const s = String(r || '');
-                const pm = s.match(/^(?:#{1,6}\s+|>\s*|[ \t]*(?:[-*+]\s+(?:\[[ xX]\]\s?)?|\d+\.(?!\d)\s*))/);
+                const pm = s.match(TZ_MARKER_PREFIX_RE);
                 const pre = pm ? pm[0] : '';
                 let b = s.slice(pre.length);
                 if (pre && /^#/.test(pre)) {
@@ -1404,7 +1404,7 @@
             if (plainStart === plainEnd) return null;
             if (type !== 'bold' && type !== 'italic' && type !== 'strike') return null;
 
-            const pref = raw.match(/^(?:#{1,6}\s+|>\s*|[ \t]*(?:[-*+]\s+(?:\[[ xX]\]\s?)?|\d+\.(?!\d)\s*))/);
+            const pref = raw.match(TZ_MARKER_PREFIX_RE);
             const prefix = pref ? pref[0] : '';
             let body = raw.slice(prefix.length);
             let suffix = '';

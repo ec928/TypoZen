@@ -15,6 +15,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { JSDOM } from 'jsdom';
 import { appDir, readEngineSource } from './engine-source.mjs';
+import './shared-rules.mjs';   // the page's shared rules (tzFence*, block markers) for the extracted functions
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const src = readEngineSource();
