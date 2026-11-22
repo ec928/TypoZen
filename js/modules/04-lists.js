@@ -1638,6 +1638,30 @@
                 // Strip "1. " / "- " / task marker only — leave body as its own block
                 writeBlockRaw(block, listP.body || '');
             }
+            // A numbered item that leaves its level: the numbers below it close the gap. One
+            // that moves out a level takes the next number there, and the items after it move
+            // up ("1. a" / "   1. x" -> "1. a" / "2. x", not a second "1.").
+            if (listP.kind === 'ol') {
+                try {
+                    const mi = DocumentModel.modelIndexOfEl(block);
+                    renumberOrderedListBelow(mi, listP.indent);
+                    const moved = parseListLine(block.getAttribute('data-raw'));
+                    if (moved && moved.kind === 'ol' && moved.indent < listP.indent) {
+                        let prev = 0;
+                        for (let i = mi - 1; i >= 0; i--) {
+                            const p = parseListLine(DocumentModel.blocks[i].raw);
+                            if (!p || p.indent < moved.indent) break;
+                            if (p.indent > moved.indent) continue;
+                            if (p.kind === 'ol') prev = p.num;
+                            break;
+                        }
+                        if (moved.num !== prev + 1) {
+                            writeBlockRaw(block, String(block.getAttribute('data-raw')).replace(/^([ \t]*)\d+/, '$1' + (prev + 1)));
+                        }
+                        if (typeof renumberOrderedListAfter === 'function') renumberOrderedListAfter(block);
+                    }
+                } catch (eNum) {}
+            }
             // Suppress the paired beforeinput/keydown so browser cannot merge after strip
             _listBackspaceLockUntil = Date.now() + 100;
             setTimeout(function () {
@@ -1647,6 +1671,62 @@
             updateOutline();
             HistoryManager.commitEdit();
             return true;
+        }
+
+        /**
+         * After line `mi` stops being a numbered item at `indent` (its marker removed, or moved
+         * to another level): the numbered items below it at that level go on from the nearest
+         * numbered item above at the same level, or from 1. "1. a" / "b" / "3. c" was left
+         * with its gap when "2. b" lost its marker (2026-11-22). The mirror of
+         * renumberOrderedListAfter: it stops where the list ends or the numbers already
+         * follow on, and nested items are not touched.
+         */
+        function renumberOrderedListBelow(mi, indent) {
+            if (!(mi >= 0) || typeof DocumentModel === 'undefined' || !DocumentModel.blocks) return;
+            const raws = DocumentModel.blocks.map(function (b) { return b.raw; });
+            renumberOrderedLinesBelow(raws, mi, indent).forEach(function (i) {
+                const el = editor && editor.querySelector('.block[data-model-index="' + i + '"]');
+                if (el) writeBlockRaw(el, raws[i]);
+                else DocumentModel.setBlockRaw(i, raws[i]);
+            });
+        }
+
+        /** The same on an array of lines (Preview's model lines or Source's): changes it in
+         *  place and returns the indices it changed. */
+        function renumberOrderedLinesBelow(lines, mi, indent) {
+            const changed = [];
+            let prev = 0;
+            for (let i = mi - 1; i >= 0; i--) {
+                const p = parseListLine(lines[i]);
+                if (!p || p.indent < indent) break;
+                if (p.indent > indent) continue;
+                if (p.kind === 'ol') prev = p.num;
+                break;
+            }
+            for (let i = mi + 1; i < lines.length; i++) {
+                const r = lines[i];
+                const p = parseListLine(r);
+                if (!p || p.indent < indent) break;
+                if (p.indent > indent) continue;
+                if (p.kind !== 'ol') break;
+                prev += 1;
+                if (p.num === prev) break;
+                lines[i] = String(r).replace(/^([ \t]*)\d+/, '$1' + prev);
+                changed.push(i);
+            }
+            return changed;
+        }
+
+        /** After a format changed lines `idx` (pre / post Markdown per line): each that was a
+         *  numbered item and no longer is one at that level closes the gap below it. */
+        function renumberAfterFormat(preLines, postLines, idx) {
+            idx.forEach(function (i) {
+                const a = parseListLine(preLines[i]);
+                const b = parseListLine(postLines[i]);
+                if (a && a.kind === 'ol' && !(b && b.kind === 'ol' && b.indent === a.indent)) {
+                    renumberOrderedLinesBelow(postLines, i, a.indent);
+                }
+            });
         }
 
         /** True if we already handled list Backspace for this physical keypress. */
@@ -2870,6 +2950,8 @@
                 ? String(_mbSelFreeze.suffix || '') : '';
             // Pass caretOffset 0 so the deferred sticky restore keeps the live caret we place
             // at the end of the altered span/block for both paragraph and inline formats.
+            // A numbered item made into something else: the numbers below close the gap.
+            if (!inlinePlan) renumberAfterFormat(preLines, postLines, Object.keys(focusIndices).map(Number));
             const ok = reloadAfterFormatEdit(preLines, postLines, focusIndices, 0);
             // A block format: the caret stays where the user put it (lines one for one).
             if (ok && !inlinePlan && fmtCap && finishBlockFormatCaret(fmtCap, sameLineMap)) return ok;
@@ -3852,8 +3934,24 @@
                 // it is, as Preview does, rather than collapse it and record an empty undo.
                 if (out === chunk) return;
 
+                // A numbered item made into something else: the numbers below close the gap,
+                // as in Preview. Only when that changes a line below is more than the chunk written.
+                let renumbered = null;
+                if (blockTypes[type]) {
+                    const preAll = full.split('\n');
+                    const postText = full.substring(0, s) + out + full.substring(e);
+                    const postAll = postText.split('\n');
+                    const l0 = full.substring(0, s).split('\n').length - 1;
+                    const idx = [];
+                    for (let k = 0; k < lines.length; k++) idx.push(l0 + k);
+                    renumberAfterFormat(preAll, postAll, idx);
+                    const joined = postAll.join('\n');
+                    if (joined !== postText) renumbered = joined;
+                }
+
                 HistoryManager.beginEdit();
-                sourceEditor.setRangeText(out, s, e, 'end');
+                if (renumbered != null) sourceEditor.setRangeText(renumbered, 0, full.length, 'end');
+                else sourceEditor.setRangeText(out, s, e, 'end');
                 resizeSourceEditor();
                 updateStats();
                 HistoryManager.commitEdit();
@@ -4001,6 +4099,7 @@
             let olNum = 1;
             // A line with Shift+Enter breaks becomes one line per piece: which, and how many.
             let splitAt = -1, splitPieces = 0;
+            const preFormatRaws = targets.map(function (b) { return readBlockRawSafe(b); });
             for (let i = 0; i < targets.length; i++) {
                 const block = targets[i];
                 // Use safe raw — getBlockRaw alone is often empty after toolbar focus steal
@@ -4036,6 +4135,16 @@
                 }
                 if ((type === 'ol' || type === 'ordered') && forceOn) olNum++;
                 writeBlockRaw(block, next);
+            }
+            // A numbered item made into something else: the numbers below close the gap.
+            if (splitAt < 0) {
+                targets.forEach(function (b, k) {
+                    const a = parseListLine(preFormatRaws[k]);
+                    const now = parseListLine(b.getAttribute('data-raw'));
+                    if (a && a.kind === 'ol' && !(now && now.kind === 'ol' && now.indent === a.indent)) {
+                        try { renumberOrderedListBelow(formatBlockIndex(b), a.indent); } catch (eNum) {}
+                    }
+                });
             }
 
             _selectedFormatBlocks = targets.slice();
