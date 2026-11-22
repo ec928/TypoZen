@@ -74,6 +74,12 @@ try {
     const src = squash(await exported());
     assert(src.indexOf('QzSourceWord') >= 0, 'a word typed in Source a moment ago is in the export, without switching back');
     assert(src.indexOf('QzPreviewWord') >= 0, 'and so is the one typed in Preview before');
+    // The cause, held at its root: in Source, syncing the (stale) Preview blocks into the
+    // model must not overwrite what was typed in Source. Everything that reads the model
+    // in Source (Find characters, the export) depends on it.
+    await page.keyboard.type(' QzSecondWord');
+    const kept = await page.evaluate(() => { DocumentModel.syncMountedToModel(); return DocumentModel.toMarkdown(); });
+    assert(kept.indexOf('QzSecondWord') >= 0 && kept.indexOf('QzSourceWord') >= 0, 'in Source, a sync from the page leaves the words typed in Source in the document model');
 } finally {
     clearTimeout(deadline);
     await browser.close();

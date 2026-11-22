@@ -445,6 +445,12 @@
 
             syncMountedToModel: function () {
                 if (!editor) return;
+                // In Source the Preview blocks still in the page are the text as it was when
+                // Preview was left; the model follows the Source editor. Copying them back
+                // overwrote what had been typed in Source -- an HTML export from Source left
+                // it out (2026-11-22). The switch to Source reads Preview before the mode
+                // changes, so nothing of Preview's is lost by stopping here.
+                if (typeof state !== 'undefined' && state.mode === 'source') return;
                 const nodes = editor.querySelectorAll('.block');
                 for (let i = 0; i < nodes.length; i++) this.syncElToModel(nodes[i]);
             },
