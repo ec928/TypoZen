@@ -5523,6 +5523,13 @@
                         // focus left on nothing, so the next letters typed went nowhere
                         // (2026-09-30).
                         const srcBefore = (state.mode === 'source' && sourceEditor) ? String(sourceEditor.value || '') : null;
+                        // An edit made in Source, undone in Preview: its caret is a Source offset
+                        // AFTER the edit, which in the text without the edit is past it -- three
+                        // letters typed, undone, and the next letter went three characters on,
+                        // into the next paragraph in a long file (2026-11-22). Find the change
+                        // instead, as the Source branch below does.
+                        let mdBefore = null;
+                        try { if (state.mode !== 'source' && caret && caret.mode === 'source' && !exactCaret) mdBefore = String(getMarkdownContent(false) || ''); } catch (eMb) {}
                         // isRestoring already true from undo/redo — load must not resetToCurrent
                         loadMarkdownContent(data.content);
                         if (state.mode === 'source') {
@@ -5541,6 +5548,15 @@
                                 caret = { mode: 'source', start: off, end: off };
                             }
                         } else if (caret && caret.mode === 'source') {
+                            if (mdBefore != null) {
+                                // The caret at the end of what changed, in the restored text.
+                                const now = String(data.content);
+                                const max = Math.min(now.length, mdBefore.length);
+                                let s = 0;
+                                while (s < max && now.charCodeAt(now.length - 1 - s) === mdBefore.charCodeAt(mdBefore.length - 1 - s)) s++;
+                                const off = now.length - s;
+                                caret = { mode: 'source', start: off, end: off };
+                            }
                             caret = this._convertCaretForMode(caret, data.content, 'wysiwyg') || caret;
                         }
                         // The branches above swap which element is visible and set

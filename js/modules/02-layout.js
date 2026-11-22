@@ -139,6 +139,45 @@
             try { syncSearchModeNotice(); } catch (eN) {}
         }
 
+        /**
+         * Esc in Find: close it and give the keyboard back to the text, the current match
+         * selected (as Notepad and VS Code do). closeFindBar alone blurred the box and left
+         * focus on nothing: in Source, and in 2-Col where the match was on a page not yet in
+         * view, the next letters typed went nowhere (2026-11-22, long file).
+         */
+        function closeFindBarToText() {
+            let m = null, kind = null, srcSel = null, range = null;
+            try { kind = findState.kind; m = findState.matches && findState.index >= 0 ? findState.matches[findState.index] : null; } catch (e0) {}
+            try { if (state.mode === 'source' && sourceEditor) srcSel = { a: sourceEditor.selectionStart | 0, b: sourceEditor.selectionEnd | 0 }; } catch (e1) {}
+            try {
+                if (state.mode !== 'source' && editor) {
+                    let s = window.getSelection();
+                    if (!(s && s.rangeCount && s.anchorNode && editor.contains(s.anchorNode)) && m && kind === 'model'
+                        && typeof revealModelMatch === 'function') {
+                        // Not selected yet (its page was not in view): select it while Find is open.
+                        revealModelMatch(m, true, false);
+                        s = window.getSelection();
+                    }
+                    if (s && s.rangeCount && s.anchorNode && editor.contains(s.anchorNode)) range = s.getRangeAt(0).cloneRange();
+                }
+            } catch (e2) {}
+            closeFindBar();
+            try {
+                if (state.mode === 'source' && sourceEditor) {
+                    sourceEditor.focus();
+                    if (m && m.start != null && m.end != null && kind === 'source') sourceEditor.setSelectionRange(m.start | 0, m.end | 0);
+                    else if (srcSel) sourceEditor.setSelectionRange(srcSel.a, srcSel.b);
+                    return;
+                }
+                try { focusEditorNoScroll(); } catch (eF) { try { editor.focus({ preventScroll: true }); } catch (eF2) {} }
+                if (range && range.startContainer && range.startContainer.isConnected) {
+                    const s = window.getSelection();
+                    s.removeAllRanges();
+                    s.addRange(range);
+                }
+            } catch (e3) {}
+        }
+
         function closeFindBar() {
             hideFindBarChrome();
             // Ctrl+F and the Search sidebar share findState. Closing the find bar must
@@ -7531,7 +7570,7 @@
                 if (e.key === 'Escape') {
                     e.preventDefault();
                     e.stopPropagation();
-                    closeFindBar();
+                    closeFindBarToText();
                     return;
                 }
             }, true);
@@ -7647,7 +7686,7 @@
                 if (e.key === 'Escape') {
                     e.preventDefault();
                     e.stopPropagation();
-                    closeFindBar();
+                    closeFindBarToText();
                 }
             }, true);
         }
