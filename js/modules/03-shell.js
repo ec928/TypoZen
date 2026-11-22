@@ -1997,6 +1997,29 @@
             window.__tzPrintCopy = null;
             try { if (copy && copy.parentNode) copy.parentNode.removeChild(copy); } catch (e) {}
             try { if (editor) editor.classList.remove('tz-print-live-hidden'); } catch (e2) {}
+            try {
+                const src = document.getElementById('tzPrintSource');
+                if (src && src.parentNode) src.parentNode.removeChild(src);
+                document.body.classList.remove('tz-print-source');
+            } catch (e3) {}
+        }
+
+        // Source prints the source text, every line of it. The Source editor (CodeMirror)
+        // draws only the lines near the screen, inside a box the height of the window, so
+        // printing it gave one page: 9 of the README's 608 lines (2026-11-22). The copy is
+        // the editor's whole text in a <pre>, shown only in print (typozen.css).
+        const PRINT_MAX_SOURCE_CHARS = 8 * 1024 * 1024;
+        function tzPrepareSourcePrint() {
+            const text = (typeof sourceEditor !== 'undefined' && sourceEditor) ? String(sourceEditor.value || '') : '';
+            if (text.length > PRINT_MAX_SOURCE_CHARS) return 'too-large:' + text.split('\n').length;   // host: "(N blocks)"
+            const pre = document.createElement('pre');
+            pre.id = 'tzPrintSource';
+            pre.className = 'tz-print-source-copy';
+            pre.textContent = text;
+            document.body.appendChild(pre);
+            document.body.classList.add('tz-print-source');
+            window.__tzPrintPending = 0;
+            return 'ok:source:' + text.split('\n').length;
         }
         window.tzEndPrintCopy = tzEndPrintCopy;
 
@@ -2004,7 +2027,8 @@
         window.tzPreparePrint = function () {
             tzEndPrintCopy();
             try {
-                if (!editor || state.mode === 'source') return '';
+                if (state.mode === 'source') return tzPrepareSourcePrint();
+                if (!editor) return '';
                 if (typeof DocumentModel === 'undefined' || !DocumentModel.blocks) return '';
                 const n = DocumentModel.blocks.length;
                 if (editor.querySelectorAll('.block').length >= n) return '';   // already whole

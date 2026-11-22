@@ -3421,10 +3421,26 @@
                every #editor rule and the book's own stylesheet style it identically. */
             html body #editor.tz-print-live-hidden { display: none !important; }
             html body #editor.tz-print-copy { display: block !important; }
+            /* Source prints its whole text from a copy (tzPrepareSourcePrint): the Source
+               editor draws only the lines near the screen. The app is hidden; the copy is
+               the page. */
+            html body.tz-print-source > *:not(#tzPrintSource) { display: none !important; }
+            html body.tz-print-source #tzPrintSource {
+                display: block !important;
+                margin: 0;
+                white-space: pre-wrap;
+                overflow-wrap: anywhere;
+                font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+                font-size: 10pt;
+                line-height: 1.35;
+                color: #000 !important;
+                background: #fff !important;
+            }
         }
         /* On screen the copy is never seen -- no flash behind the print dialog. */
         @media screen {
             #editor.tz-print-copy { display: none !important; }
+            #tzPrintSource { display: none !important; }
         }
 
 /* A typed tab (Tab outside a list) shows at its width, as in Notepad; plain text

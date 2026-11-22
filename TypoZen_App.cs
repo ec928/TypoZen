@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.22.3";
+        internal const string AppVersion = "0.22.4";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -20179,6 +20179,8 @@ namespace TypoZen
             {
                 string r = ExecuteScriptBlocking(
                     "(function(){ try {" +
+                    // Source draws only the lines near the screen: always print from a copy.
+                    "  if (typeof state !== 'undefined' && state.mode === 'source') return 'source';" +
                     "  if (typeof DocumentModel === 'undefined' || !DocumentModel.blocks) return '';" +
                     "  var ed = document.getElementById('editor');" +
                     "  if (!ed) return '';" +
