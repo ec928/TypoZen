@@ -104,35 +104,93 @@ try {
         await sleep(120);
     }
 
+    // LARGE DOCUMENTS ARE THE DEFAULT (Ed, 2026-11-22). Each case also runs in the MIDDLE of a
+    // long document: 1,200 one-line paragraphs above it and 1,200 below (4,800+ lines, past
+    // the 2,000-block windowing threshold), so Preview holds only a window of the file, as it
+    // does for any real long document. The padding must come back exactly as it was; the
+    // case's own part is compared as before. A case about the start or end of the FILE runs
+    // small only (EDGE_ONLY_SMALL).
+    const PADN = 1200;
+    const PAD_BEFORE = Array.from({ length: PADN }, (_, i) => 'Filler paragraph ' + i + ' above the case.').join('\n\n');
+    const PAD_AFTER = Array.from({ length: PADN }, (_, i) => 'Filler paragraph ' + i + ' below the case.').join('\n\n');
+    let PAD = false;
+    // Their want is the whole small file. In a long file these keys are attacked by
+    // large-selection-browser and large-edit-more-browser (Ctrl+A, Ctrl+Home/End, to the end).
+    const EDGE_ONLY_SMALL = new Set(['Ctrl+Home and Ctrl+End', 'Ctrl+A then typing replaces everything',
+        'Shift+PageDown selects to the end of a short document']);
+
     async function load(md, mode) {
         await page.evaluate(() => { try { tzSetOverwrite(false); handleCommand('view_set:mode:preview'); } catch (e) {} });
-        await page.evaluate((m) => loadMarkdownContent(m), md);
-        await sleep(350);
+        await page.evaluate((m) => loadMarkdownContent(m), PAD ? PAD_BEFORE + '\n\n' + md + '\n\n' + PAD_AFTER : md);
+        await sleep(PAD ? 600 : 350);
+        // Show the case's part of the file, as a writer scrolled there would see it.
+        // (A blank line is a block of its own: the case starts at block 2 x PADN.)
+        if (PAD && mode !== 'source') { await page.evaluate((n) => goToModelBlock(n), 2 * PADN); await sleep(400); }
         if (mode === 'source') {
             await page.evaluate(() => handleCommand('view_set:mode:source'));
             await sleep(500);
         }
     }
+    // In a padded file, the case's text is between the padding: check the padding, return the case.
+    async function savedCase() {
+        const got = await saved();
+        if (!PAD) return got;
+        const g = got.replace(/\n+$/, '');
+        const head = PAD_BEFORE + '\n\n', tail = '\n\n' + PAD_AFTER;
+        if (!g.startsWith(head)) return 'PADDING ABOVE THE CASE CHANGED: ' + JSON.stringify(g.slice(Math.max(0, head.length - 60), head.length + 40));
+        if (!g.endsWith(tail)) return 'PADDING BELOW THE CASE CHANGED: ' + JSON.stringify(g.slice(Math.max(0, g.length - tail.length - 40), g.length - tail.length + 60));
+        return g.slice(head.length, g.length - tail.length);
+    }
+    // Source in a long file draws only the lines near the view, so a line is not the nth drawn
+    // one: put the caret at (line, col) of the case by offset, in view, then the keys are real.
+    async function placeSourceInLongFile(line, col) {
+        await page.evaluate((ln, c) => {
+            const L = sourceEditor.value.split('\n');
+            let p = 0; for (let i = 0; i < ln; i++) p += L[i].length + 1;
+            p += Math.min(c, (L[ln] || '').length);
+            try { scrollSourceToHardLine(ln + 1, true); } catch (e) {}
+            sourceEditor.focus(); sourceEditor.setSelectionRange(p, p);
+        }, line, col);
+        await sleep(150);
+    }
 
     // One case: fresh document, click, keys, compare what is saved.
     async function run(mode, name, md, where, keys, want) {
+        if (PAD && EDGE_ONLY_SMALL.has(name)) return;
+        const label = (PAD ? (mode === 'source' ? 'source, long file' : layoutLabel + ', long file') : mode) + ': ' + name;
         try {
             await load(md, mode);
-            if (mode === 'source') await clickSource(where[0], where[1]);
+            if (mode === 'source' && PAD) await placeSourceInLongFile(where[0] + 2 * PADN, where[1]);
+            else if (mode === 'source') await clickSource(where[0], where[1]);
             else await clickPreview(where[0], where[1]);
             await keys();
             await sleep(250);
-            const got = await saved();
+            const got = await savedCase();
             const ok = (typeof want === 'function') ? want(got) : got === want;
-            check(ok, mode + ': ' + name, got, typeof want === 'function' ? undefined : want);
+            check(ok, label, got, typeof want === 'function' ? undefined : want);
         } catch (e) {
-            check(false, mode + ': ' + name + ' (threw ' + e.message + ')');
+            check(false, label + ' (threw ' + e.message + ')');
         }
     }
 
-    for (const mode of ['preview', 'source']) {
-        if (only && only !== mode) continue;
-        console.log('\n=== ' + mode + ' ===');
+    // Long file first (the default), in scrolling and two-page Preview and in Source; then the
+    // same cases on the small file. `only` picks one: preview, source, preview-large,
+    // pages-large, source-large.
+    const VARIANTS = [
+        { key: 'preview-large', mode: 'preview', pad: true, layout: ['view_set:columns:1', 'view_set:scroll:scroll'], label: 'scrolling Preview' },
+        { key: 'pages-large', mode: 'preview', pad: true, layout: ['view_set:columns:2', 'view_set:scroll:pagination'], label: 'two-page Preview' },
+        { key: 'source-large', mode: 'source', pad: true, layout: ['view_set:columns:1', 'view_set:scroll:scroll'], label: 'Source' },
+        { key: 'preview', mode: 'preview', pad: false, layout: ['view_set:columns:1', 'view_set:scroll:scroll'], label: 'Preview' },
+        { key: 'source', mode: 'source', pad: false, layout: ['view_set:columns:1', 'view_set:scroll:scroll'], label: 'Source' },
+    ];
+    let layoutLabel = '';
+    for (const variant of VARIANTS) {
+        if (only && only !== variant.key) continue;
+        const mode = variant.mode;
+        PAD = variant.pad; layoutLabel = variant.label;
+        await page.evaluate((c) => { handleCommand('view_set:mode:preview'); c.forEach(x => handleCommand(x)); }, variant.layout);
+        await sleep(1500);   // a column switch settles over the host's resize
+        console.log('\n=== ' + (PAD ? variant.label + ', long file' : mode) + ' ===');
         const SRC = mode === 'source';
         // where: Preview = [text in the block, char offset]; Source = [line, column]
         const at = (text, off, line) => SRC ? [line, off] : [text, off];
