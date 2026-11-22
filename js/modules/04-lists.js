@@ -4736,6 +4736,11 @@
             // intentional Ctrl+Z ("worked once then stopped"). Host skips inject when
             // WebView focused; menu uses short SendHistoryCmd debounce only.
             _lastNavAt: 0,
+            // Typing over a selection across lines records "selection replaced by the first
+            // letter" as one step; the rest of the word belongs in that step too, as when
+            // typing over a selection on one line. Set by that handler (04b-format), used
+            // once by the next typing snapshot or Undo, cleared by any other edit.
+            _extendTop: false,
 
             /** Approximate document character count from a stacked state string. */
             _docCharsFromState(stateStr) {
@@ -5194,6 +5199,7 @@
              */
             recordEditPair(preContent, postContent) {
                 if (this.isRestoring) return;
+                this._extendTop = false;
                 this._flushTimer();
                 // DOM still has pre content here — capture caret before reload
                 const caret = this._captureCaret();
@@ -5224,6 +5230,7 @@
             clear() {
                 this.undoStack = [];
                 this.redoStack = [];
+                this._extendTop = false;
                 this._flushTimer();
             },
 
@@ -5240,6 +5247,7 @@
              */
             beginEdit() {
                 if (this.isRestoring) return;
+                this._extendTop = false;
                 this._flushTimer();
                 const cap = this._capture();
                 const capContent = this._contentOf(cap);
@@ -5262,6 +5270,7 @@
              */
             commitEdit() {
                 if (this.isRestoring) return;
+                this._extendTop = false;
                 this._flushTimer();
                 const after = this._capture();
                 const afterContent = this._contentOf(after);
@@ -5306,6 +5315,11 @@
                         ? this._contentOf(this.undoStack[this.undoStack.length - 1])
                         : '';
                     if (this._sameContent(capContent, topContent)) return;
+                    if (this._extendTop && this.undoStack.length > 1) {
+                        this._extendTop = false;
+                        this.undoStack[this.undoStack.length - 1] = cap;
+                        return;
+                    }
                     this._push(cap, true);
                 }, 350);
             },
@@ -5323,11 +5337,14 @@
                         ? this._contentOf(this.undoStack[this.undoStack.length - 1])
                         : '';
                     if (!this._sameContent(liveContent, topContent)) {
-                        if (String(liveContent).trim() || !this.undoStack.length) {
+                        if (this._extendTop && this.undoStack.length > 1 && String(liveContent).trim()) {
+                            this.undoStack[this.undoStack.length - 1] = live;
+                        } else if (String(liveContent).trim() || !this.undoStack.length) {
                             this._push(live, false);
                         }
                     }
                 }
+                this._extendTop = false;
 
                 if (this.undoStack.length <= 1) return;
                 this.isRestoring = true;
@@ -5400,6 +5417,7 @@
 
             redo() {
                 if (this.redoStack.length === 0) return;
+                this._extendTop = false;
                 this._flushTimer();
                 this.isRestoring = true;
                 try {

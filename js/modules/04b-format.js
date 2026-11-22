@@ -2952,7 +2952,13 @@
                     if (typeof HistoryManager !== 'undefined' && HistoryManager.undoStack.length > 1) HistoryManager.undoStack.pop();
                 } catch (eH) {}
                 document.execCommand('insertText', false, e.key);
-                try { if (typeof HistoryManager !== 'undefined') HistoryManager.commitEdit(); } catch (eC) {}
+                try {
+                    if (typeof HistoryManager !== 'undefined') {
+                        HistoryManager.commitEdit();
+                        // The rest of the word joins this step (see _extendTop).
+                        HistoryManager._extendTop = true;
+                    }
+                } catch (eC) {}
             } catch (eTy) {}
         }, true);
         // Keyboard multi-select (Shift+Arrow): snapshot while still collapsed / first extend
