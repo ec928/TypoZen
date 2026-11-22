@@ -175,6 +175,27 @@ $env:RUN_APP_E2E = '1'; .\tests\run-tests.ps1  # + real TypoZen.exe (slow; only 
 - **Unhandled UI faults stop automatic writes.** `DocumentStateSuspect` is set from `DispatcherUnhandledException` (and AppDomain). Autosave and session persist return without touching disk; File > Save still works. Proved by `tests/fault-autosave-app.mjs` (`debug_throw_ui`, `--debug` only). Do not add a shipped throw-switch.
 - Prefer characterising failures over deleting suites. Skip only when the environment truly cannot run (missing fixture / no display) — document why.
 
+## Rules kept once, and the sweeps that hold them (2026-11-22)
+
+- **Code fences: `tzFenceOpen`, `tzFenceClose`, `tzFenceRaw`, `tzFenceRawClosed`,
+  `tzFenceLineStates`, `tzFenceAt` in `01-core.js`.** Never write a fence regex in a module.
+  The rule was once in some twenty places with five regexes, and they disagreed ("~~~", the
+  indent, which line closes). A selftest that sandboxes extracted functions imports
+  `tests/shared-rules.mjs` to get them.
+- **Text to blocks: `splitMarkdownToBlockRaws`** (`05-model.js`). Paste uses it too; a copy
+  of it drifted once (it reordered a table before a code block).
+- **In Source, the Preview blocks are stale.** `syncMountedToModel` does nothing in Source.
+  Anything new that reads the document (an export, a reader, a scan) must work from Source
+  without a switch: add it to `tests/source-mode-readers-browser.mjs`.
+- **`tests/cross-mode-sweep-browser.mjs`** presses real keys on the README in every layout
+  and checks what must always hold (Undo gives the file back, nearby lines only, Preview
+  and Source agree). `print-every-line-browser` and `export-html-whole-browser` read every
+  page of a PDF and the whole exported HTML. Add a case there for a new edit or output.
+- **Not merged yet:** a line's block marker (heading, quote, bullet, task, number) is
+  matched by two different regexes written 7 and 3 times across `04-lists`, `04b-format`
+  and `05-model`, which differ in detail (`>\s*` vs `>\s+`, `[ xX]` vs `[ xX]?`). Same
+  shape as the fences; merge it the same way, proving no real file changes.
+
 ## Auditing for dead or duplicated code
 
 Four mechanical scans cover this tree. Each produces candidates, **not findings** — every
