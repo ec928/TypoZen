@@ -45,7 +45,7 @@ namespace TypoZen
         /// with it when the template is prepared for navigation, so a bump here reaches
         /// the file properties and the UI together. Nothing else may hold a copy.
         /// </remarks>
-        internal const string AppVersion = "0.22.0";
+        internal const string AppVersion = "0.22.1";
 
         /// <summary>
         /// Where "Report a problem or suggest a feature" in About goes.
@@ -17318,9 +17318,15 @@ namespace TypoZen
                             || (i == _activeTabIndex && _isDirty);
 
                         // Dirty tab + disk differs: never silently wipe unsaved work.
+                        // Ask only when the file changed on disk since this tab loaded or
+                        // saved it. Otherwise the difference is just the unsaved edits, and
+                        // opening the file again means "show me it": switch to the tab, as
+                        // Keep edits does (Ed, 2026-11-22: it asked on every Explorer
+                        // double-click of a file being edited).
+                        bool diskChangedSinceLoad = ContentFingerprint(diskRaw ?? "") != _tabs[i].DiskFingerprint;
                         if (wasDirty && diskDiffers)
                         {
-                            var choice = _e2eMode
+                            var choice = (_e2eMode || (!diskChangedSinceLoad && !forceEditorText))
                                 ? WinForms.DialogResult.No
                                 : ThemedPrompt.ShowChoices(
                                     "This file is already open with unsaved edits.\n\n" +

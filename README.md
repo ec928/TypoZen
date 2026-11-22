@@ -358,6 +358,7 @@ Full multi-document editing, with the tab strip living in the title bar.
 - **Read-only files** are not saved over: Save says so and points to Save As, and autosave skips them
 - **Per-tab view** — 1 Col / 2 Col **and** Source / Preview belong to the document, not the window: a novel wants a two-column spread and the notes file in the next tab does not. Both are recorded per tab and restored with the session. Only a deliberate choice is written down — the toolbar column button, the Mode buttons, or the session file. What the page happens to be painting mid-load never is, because a book's first paint is one column until its layout arrives and storing that would forget the spread. Switching between them keeps the window's top-left corner where you put it and only widens or narrows the window to the right; each layout remembers its own size, and one that would run off the screen moves in only as far as it has to
 - **Fail-closed switching** — if the editor's content cannot be synced back to the tab, the switch or new-tab operation is _refused_ rather than proceeding and risking unsaved edits
+- **Opening a file that is already open** switches to its tab, unsaved edits and all. It asks first (Reload from disk / Keep edits / Cancel) only when the file has changed on disk since the tab loaded or saved it
 - **Session restore** reopens your tabs on next launch (bodies only if you've enabled unsaved-document restore under File → Privacy)
 
 ## Themes & typography
