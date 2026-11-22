@@ -4157,6 +4157,25 @@
          *
          * A 2-column page is a spread, so it carries two numbers, one under each column.
          */
+        // A picture that finishes loading changes the layout, and the label said what it was
+        // before: American Gods opened on "Front Matter, Page 1 of 1" with three pages there,
+        // until the next key (2026-11-22). Load events do not bubble: listen in the capture
+        // phase, and redraw once per burst of pictures.
+        let _pageLabelAfterPics = null;
+        if (typeof editor !== 'undefined' && editor && !editor.__tzPicLabel) {
+            editor.__tzPicLabel = true;
+            const onPic = function (e) {
+                if (!e.target || e.target.tagName !== 'IMG') return;
+                if (_pageLabelAfterPics) return;
+                _pageLabelAfterPics = setTimeout(function () {
+                    _pageLabelAfterPics = null;
+                    try { if (isPaginatedLayout()) updatePageIndicator(); } catch (eU) {}
+                }, 150);
+            };
+            editor.addEventListener('load', onPic, true);
+            editor.addEventListener('error', onPic, true);
+        }
+
         function updatePageIndicator() {
             try { updatePageScrubber(); } catch (eS) {}
             const host = document.getElementById('page-indicator');
@@ -4182,7 +4201,25 @@
                 host.style.display = 'flex';
                 host.classList.toggle('two-up', two);
                 host.classList.add('book-label');
-                host.title = bookPos.title || '';
+                // A book's pictures load lazily, and one not loaded yet takes almost no room,
+                // so the page total grows as they load (a scanned encyclopedia read "of 46" at
+                // open and "of 430" near the end, 2026-11-22). While any is still loading the
+                // total is marked as an estimate, as a document's is. Only pictures in this
+                // section count: one before it moves the section's start and end alike.
+                let picsLoading = false;
+                try {
+                    const u = bookPos.unit || {};
+                    Array.prototype.some.call(editor.querySelectorAll('img'), function (im) {
+                        if (im.complete && !im.hasAttribute('data-pending')) return false;
+                        const blk = im.closest && im.closest('.block[data-model-index]');
+                        const mi = blk ? +blk.getAttribute('data-model-index') : -1;
+                        if (u.start != null && u.end != null && !(mi >= u.start && mi < u.end)) return false;
+                        picsLoading = true;
+                        return true;
+                    });
+                } catch (ePic) {}
+                host.title = (bookPos.title || '') + (picsLoading
+                    ? (bookPos.title ? ' — ' : '') + 'the page total is an estimate until the pictures have loaded' : '');
                 host.removeAttribute('role');
                 host.textContent = '';
                 const sLeft = document.createElement('span');
@@ -4192,7 +4229,7 @@
                 
                 const sRight = document.createElement('span');
                 sRight.className = 'page-num';
-                sRight.textContent = 'Page ' + bookPos.page + ' of ' + bookPos.pages;
+                sRight.textContent = 'Page ' + bookPos.page + ' of ' + (picsLoading ? '~' : '') + bookPos.pages;
                 host.appendChild(sRight);
                 try { postBookProgress(); } catch (eBp) {}
                 try { if (typeof postChapterLabel === 'function') postChapterLabel(); } catch (eCh0) {}
