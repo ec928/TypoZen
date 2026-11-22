@@ -175,6 +175,20 @@ $env:RUN_APP_E2E = '1'; .\tests\run-tests.ps1  # + real TypoZen.exe (slow; only 
 - **Unhandled UI faults stop automatic writes.** `DocumentStateSuspect` is set from `DispatcherUnhandledException` (and AppDomain). Autosave and session persist return without touching disk; File > Save still works. Proved by `tests/fault-autosave-app.mjs` (`debug_throw_ui`, `--debug` only). Do not add a shipped throw-switch.
 - Prefer characterising failures over deleting suites. Skip only when the environment truly cannot run (missing fixture / no display) — document why.
 
+## Large documents are the default for editing tests (Ed, 2026-11-22)
+
+Attack and prove every edit on a LARGE document first -- past the windowing thresholds
+(2,000+ blocks or 120 KB; `tests/large-scroll-mixed.md` is 4,582 lines), the caret in the
+middle, in scrolling 1-column, 2-column and two-page Preview -- then check a small document
+quickly. A long document is the normal case, not an edge case: Preview holds only a window of
+it and rebuilds the window as lines come and go, and an element held across an edit can leave
+the page. Delete and Backspace on an empty line, or at a line's ends, did exactly that and
+left no caret at all, the next letter going nowhere -- in a release, after a day of attacks
+that all ran on ten-line documents. After an edit, re-find the line by its model index
+(`elementForModelIndex`) before putting the caret in it, and check the caret is in the page
+(`editor.contains(anchorNode)`). `tests/cross-mode-sweep-browser.mjs` and
+`tests/large-context-browser.mjs` hold this; add a case there for any new edit.
+
 ## Rules kept once, and the sweeps that hold them (2026-11-22)
 
 - **Code fences: `tzFenceOpen`, `tzFenceClose`, `tzFenceRaw`, `tzFenceRawClosed`,
