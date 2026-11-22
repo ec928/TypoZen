@@ -220,7 +220,13 @@
                 const line = lines[i];
                 // Backtick fences only. A "~~~" line is a scene break in prose, and taking it
                 // as a fence turned everything up to the next one into code (0.19.2).
-                const fenceMatch = line.match(/^(`{3,})/);
+                // Up to three spaces before a fence, as Markdown and Source allow: a code block
+                // in a list item is indented ("- step" then "  ```js"). Preview took only column
+                // 0, so it showed each code line as a paragraph, and a closing "   ```" was
+                // missed and the block ran on into the text after it (2026-11-22). The code
+                // lines are shown and saved as written, indent and all. No backtick after the
+                // fence (Markdown's rule): "```` ```css ```` and" is inline code, not a fence.
+                const fenceMatch = line.match(/^ {0,3}(`{3,})[^`]*$/);
                 if (fenceMatch) {
                     if (currentCodeBlock !== null) {
                         if (codeFence && fenceMatch[1].length >= codeFence.length) {
@@ -483,7 +489,7 @@
                 const def = this.rowHeight || 28;
                 raw = String(raw == null ? '' : raw);
                 if (!raw.trim()) return def;
-                if (raw.indexOf('```') === 0) {
+                if (/^ {0,3}`{3,}[^`\n]*(\n|$)/.test(raw)) {
                     const lines = raw.split('\n').length;
                     return Math.max(def, Math.min(900, lines * 18 + 20));
                 }
@@ -2358,7 +2364,7 @@
             let currentTable = null;
             for (let i = 0; i < rawLines.length; i++) {
                 const l = rawLines[i];
-                if (l.startsWith('```')) {
+                if (/^ {0,3}`{3,}[^`]*$/.test(l)) {   // as splitMarkdownToBlockRaws
                     if (currentCode !== null) {
                         currentCode.push(l);
                         blockTexts.push(currentCode.join('\n'));

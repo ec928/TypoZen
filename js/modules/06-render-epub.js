@@ -2347,7 +2347,9 @@
 
             // Code Blocks (fenced). Fences must take precedence over tables so ASCII art and diagrams with pipes survive.
             // Backticks only, as splitMarkdownToBlockRaws: "~~~" is a scene break in prose.
-            const fenceMatch = (lines[0] || '').match(/^(`{3,})(.*)$/);
+            // Up to three spaces before the fence (splitMarkdownToBlockRaws). The code lines
+            // are drawn as written, indent included, so what is saved is what was there.
+            const fenceMatch = (lines[0] || '').match(/^ {0,3}(`{3,})([^`]*)$/);
             if (fenceMatch) {
                 clearListIndentClasses(block);
                 block.classList.remove('list-block');
